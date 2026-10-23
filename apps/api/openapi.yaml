@@ -1,0 +1,200 @@
+openapi: 3.1.0
+info:
+  title: FS-03 Learning Studio API
+  version: 0.1.0
+  description: Versioned REST API for courses, learning, media, live classes, payments, certificates, and instructor reporting.
+servers:
+  - url: http://localhost:4100/api/v1
+security:
+  - cookieAuth: []
+  - bearerAuth: []
+paths:
+  /health:
+    get:
+      security: []
+      summary: API health
+      responses:
+        '200': { description: Healthy }
+  /ready:
+    get:
+      security: []
+      summary: Readiness and configured development adapters
+      responses:
+        '200': { description: Ready }
+  /auth/register:
+    post:
+      security: []
+      summary: Create a student account
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, email, password]
+              properties:
+                name: { type: string, minLength: 2, maxLength: 80 }
+                email: { type: string, format: email }
+                password: { type: string, minLength: 12 }
+      responses:
+        '201': { description: Student account created; session cookies set }
+        '409': { description: Email already exists }
+  /auth/login:
+    post:
+      security: []
+      summary: Sign in and rotate the refresh session
+      responses:
+        '200': { description: Session cookies set }
+  /auth/refresh:
+    post:
+      security: []
+      summary: Rotate a single-use refresh token
+      responses:
+        '200': { description: Session rotated }
+  /auth/logout:
+    post:
+      summary: Revoke refresh session and clear cookies
+      responses:
+        '204': { description: Signed out }
+  /auth/me:
+    get:
+      summary: Current authenticated user
+      responses:
+        '200': { description: User profile }
+  /courses:
+    get:
+      security: []
+      summary: Search published courses
+      parameters:
+        - { in: query, name: q, schema: { type: string } }
+        - { in: query, name: category, schema: { type: string } }
+        - { in: query, name: page, schema: { type: integer, minimum: 1 } }
+        - { in: query, name: limit, schema: { type: integer, minimum: 1, maximum: 24 } }
+      responses:
+        '200': { description: Course page }
+  /courses/{courseId}:
+    get:
+      security: []
+      summary: Course details
+      parameters: [{ in: path, name: courseId, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        '200': { description: Published course details }
+  /courses/{courseId}/enroll:
+    post:
+      summary: Enroll a student in a free course
+      responses:
+        '201': { description: Enrollment created }
+        '402': { description: Checkout required for paid course }
+  /courses/{courseId}/learning:
+    get:
+      summary: Enrolled course curriculum and persisted progress
+      responses:
+        '200': { description: Learning view }
+        '403': { description: Enrollment required }
+  /lessons/{lessonId}/progress:
+    post:
+      summary: Record server-validated playback heartbeat
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [courseId, positionSeconds]
+              properties:
+                courseId: { type: string, format: uuid }
+                positionSeconds: { type: number, minimum: 0 }
+                playing: { type: boolean }
+      responses:
+        '200': { description: Persisted lesson progress }
+  /courses/{courseId}/quiz:
+    get:
+      summary: Quiz questions without answer keys
+      responses:
+        '200': { description: Quiz }
+  /courses/{courseId}/quiz/attempts:
+    post:
+      summary: Submit answers for server-side grading
+      responses:
+        '201': { description: Graded attempt }
+  /instructor/lessons/{lessonId}/media:
+    post:
+      summary: Upload a video for asynchronous HLS processing
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [video]
+              properties:
+                video: { type: string, format: binary }
+      responses:
+        '202': { description: Media processing queued }
+  /media/{mediaId}:
+    get:
+      summary: Processing state
+      responses:
+        '200': { description: Media status }
+  /media/{mediaId}/playlist:
+    get:
+      summary: Authorized HLS playlist
+      responses:
+        '200': { description: M3U8 playlist }
+        '403': { description: Enrollment required }
+  /courses/{courseId}/checkout:
+    post:
+      summary: Create provider test checkout or local demo payment
+      responses:
+        '201': { description: Checkout session }
+  /payments/webhook:
+    post:
+      security: []
+      summary: Verify Stripe test-mode webhook signature
+      responses:
+        '200': { description: Event processed idempotently }
+        '400': { description: Invalid signature }
+  /instructor/earnings:
+    get:
+      summary: Instructor ledger totals and transaction list
+      responses:
+        '200': { description: Earnings derived from ledger entries }
+  /courses/{courseId}/live-classes:
+    get:
+      summary: Course live class schedule
+      responses:
+        '200': { description: Authorized schedule }
+  /live-classes/{sessionId}/join:
+    post:
+      summary: Issue scoped LiveKit room token
+      responses:
+        '200': { description: Short-lived participant token }
+        '503': { description: LiveKit credentials are not configured }
+  /courses/{courseId}/certificate:
+    post:
+      summary: Issue an idempotent certificate after server-side completion checks
+      responses:
+        '201': { description: Certificate metadata }
+        '409': { description: Course completion requirements not met }
+  /certificates/{certificateId}/verify:
+    get:
+      security: []
+      summary: Public certificate verification
+      responses:
+        '200': { description: Valid certificate with intended public fields }
+        '404': { description: Invalid or revoked certificate }
+  /admin/overview:
+    get:
+      summary: Platform aggregate metrics
+      responses:
+        '200': { description: Database-derived admin overview }
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: fs03_access
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

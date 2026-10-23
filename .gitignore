@@ -1,0 +1,13 @@
+node_modules/
+dist/
+.artifacts/
+.env
+*.log
+data/dev-store.json
+data/jobs/
+storage/incoming/
+storage/processed/
+storage/samples/*.mp4
+coverage/
+.DS_Store
+*.tsbuildinfo

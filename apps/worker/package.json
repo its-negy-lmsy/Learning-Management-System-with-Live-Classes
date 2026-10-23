@@ -1,0 +1,13 @@
+{
+  "name": "@fs03/worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx ../api/src/media/worker.ts",
+    "build": "npm --workspace @fs03/api run build",
+    "start": "node ../api/dist/media/worker.js",
+    "typecheck": "npm --workspace @fs03/api run typecheck"
+  },
+  "devDependencies": { "tsx": "^4.20.6" }
+}

@@ -1,0 +1,4 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
+  <defs><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#1d4037"/><stop offset="1" stop-color="#a4b6a3"/></linearGradient></defs>
+  <rect width="1280" height="720" fill="url(#bg)"/><circle cx="1010" cy="186" r="210" fill="#e1ac80" opacity=".8"/><circle cx="1020" cy="184" r="116" fill="#f3d9b6" opacity=".8"/><path d="M0 514c202-159 337-98 539-2s330 145 741-46v254H0z" fill="#17372f" opacity=".72"/><g fill="#f6f5ed" opacity=".9"><path d="M173 226h212v12H173zM173 258h159v8H173zM173 302h183v7H173z"/><text x="166" y="420" font-family="Georgia,serif" font-size="94">Make room</text><text x="166" y="518" font-family="Georgia,serif" font-size="94" font-style="italic">to learn.</text></g><text x="166" y="600" fill="#e6cfb9" font-family="Arial,sans-serif" font-size="19" letter-spacing="5">FIELDNOTES · LEARNING STUDIO</text>
+</svg>
