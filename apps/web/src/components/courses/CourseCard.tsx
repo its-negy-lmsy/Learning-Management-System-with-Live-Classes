@@ -26,20 +26,21 @@ export function CourseCard({
   return (
     <Link className={`course-card card-tone-${index % 3}`} to={`/course/${course.id}`}>
       <div className="course-image">
-        <img src={course.thumbnail} alt="" loading="lazy" />
+        <img src={course.thumbnail} alt={course.title} loading="lazy" />
         <span className="category-pill">{course.category}</span>
+        {course.badge && <span className="badge-pill">{course.badge}</span>}
         <span className="course-image-index">{String(index + 1).padStart(2, "0")}</span>
       </div>
       <div className="course-card-content">
         <div className="course-meta">
-          <span>{course.level}</span>
+          <span className={`level-badge level-${course.level.toLowerCase()}`}>{course.level}</span>
           <span className="meta-dot">·</span>
           <span>{duration} min</span>
           {course.averageRating ? (
             <>
               <span className="meta-dot">·</span>
               <span className="card-rating">
-                <Star size={12} fill="#d97706" color="#d97706" />
+                <Star size={13} fill="#f59e0b" color="#f59e0b" />
                 <strong>{course.averageRating.toFixed(1)}</strong>
                 {course.reviewCount ? <small>({course.reviewCount})</small> : null}
               </span>
@@ -50,12 +51,19 @@ export function CourseCard({
         <p>{course.subtitle}</p>
         <div className="course-card-bottom">
           <div className="instructor-mini">
-            <span>{course.instructorName.slice(0, 1)}</span>
-            {course.instructorName}
+            {course.instructorAvatar ? (
+              <img src={course.instructorAvatar} alt={course.instructorName} className="instructor-avatar-img" />
+            ) : (
+              <span>{course.instructorName.slice(0, 1)}</span>
+            )}
+            <div>
+              <span className="instructor-name">{course.instructorName}</span>
+              {course.instructorTitle && <small className="instructor-title">{course.instructorTitle}</small>}
+            </div>
           </div>
-          <div>
+          <div className="card-price-block">
             <small>{lessonCount} lessons</small>
-            <strong>
+            <strong className={course.priceMinor === 0 ? "free-tag" : "paid-tag"}>
               {course.priceMinor ? formatMoney(course.priceMinor, course.currency) : "Free"}
             </strong>
           </div>

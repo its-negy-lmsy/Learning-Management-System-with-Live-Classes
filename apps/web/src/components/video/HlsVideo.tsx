@@ -6,13 +6,15 @@ import { setPlaybackRate, toggleMute } from "../../slices/playerSlice";
 
 export function HlsVideo({
   mediaId,
+  videoUrl,
   initialPosition,
   seekTo,
   onProgress,
   onTimeUpdate,
   onSeekComplete,
 }: {
-  mediaId: string;
+  mediaId?: string;
+  videoUrl?: string;
   initialPosition: number;
   seekTo?: number;
   onProgress: (position: number, playing: boolean) => void;
@@ -40,13 +42,18 @@ export function HlsVideo({
     }
   }, [seekTo, onSeekComplete]);
 
-  // Initialize HLS
+  // Initialize playback (HLS stream or direct video stream)
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
-    const manifest = `/api/v1/media/${mediaId}/playlist`;
-    let cancelled = false;
 
+    const source = mediaId ? `/api/v1/media/${mediaId}/playlist` : videoUrl;
+    if (!source) {
+      setPlaybackError("No video source provided for this lesson.");
+      return;
+    }
+
+    let cancelled = false;
     const restorePosition = () => {
       if (initialPositionRef.current && initialPositionRef.current > 0) {
         video.currentTime = initialPositionRef.current;
@@ -54,49 +61,57 @@ export function HlsVideo({
     };
 
     setPlaybackError("");
-    void import("hls.js")
-      .then(({ default: HlsLibrary }) => {
-        if (cancelled) return;
-        if (HlsLibrary.isSupported()) {
-          const hls = new HlsLibrary({
-            enableWorker: true,
-            lowLatencyMode: false,
-            xhrSetup: (xhr, url) => {
-              if (new URL(url, window.location.href).hostname === window.location.hostname) {
-                xhr.withCredentials = true;
+    const isHls = source.includes(".m3u8") || source.includes("/playlist");
+
+    if (isHls) {
+      void import("hls.js")
+        .then(({ default: HlsLibrary }) => {
+          if (cancelled) return;
+          if (HlsLibrary.isSupported()) {
+            const hls = new HlsLibrary({
+              enableWorker: true,
+              lowLatencyMode: false,
+              xhrSetup: (xhr, url) => {
+                if (new URL(url, window.location.href).hostname === window.location.hostname) {
+                  xhr.withCredentials = true;
+                }
+              },
+            });
+            hlsRef.current = hls;
+            hls.loadSource(source);
+            hls.attachMedia(video);
+
+            hls.on(HlsLibrary.Events.MANIFEST_PARSED, (_event, data) => {
+              restorePosition();
+              if (data.levels && data.levels.length > 1) {
+                const mappedLevels = data.levels.map((lvl, idx) => ({
+                  id: idx,
+                  label: lvl.height ? `${lvl.height}p` : `${Math.round(lvl.bitrate / 1000)}k`,
+                }));
+                setLevels([{ id: -1, label: "Auto" }, ...mappedLevels]);
               }
-            },
-          });
-          hlsRef.current = hls;
-          hls.loadSource(manifest);
-          hls.attachMedia(video);
+            });
 
-          hls.on(HlsLibrary.Events.MANIFEST_PARSED, (_event, data) => {
-            restorePosition();
-            if (data.levels && data.levels.length > 1) {
-              const mappedLevels = data.levels.map((lvl, idx) => ({
-                id: idx,
-                label: lvl.height ? `${lvl.height}p` : `${Math.round(lvl.bitrate / 1000)}k`,
-              }));
-              setLevels([{ id: -1, label: "Auto" }, ...mappedLevels]);
-            }
-          });
-
-          hls.on(HlsLibrary.Events.ERROR, (_event, data) => {
-            if (data.fatal) {
-              setPlaybackError(
-                "The HLS stream could not be loaded. Check your enrollment and media processing status."
-              );
-            }
-          });
-        } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
-          video.src = manifest;
-          video.addEventListener("loadedmetadata", restorePosition, { once: true });
-        } else {
-          setPlaybackError("This browser does not support HLS playback.");
-        }
-      })
-      .catch(() => setPlaybackError("The HLS player could not be loaded."));
+            hls.on(HlsLibrary.Events.ERROR, (_event, data) => {
+              if (data.fatal) {
+                setPlaybackError(
+                  "The stream could not be loaded. Check your enrollment and media processing status."
+                );
+              }
+            });
+          } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
+            video.src = source;
+            video.addEventListener("loadedmetadata", restorePosition, { once: true });
+          } else {
+            setPlaybackError("This browser does not support HLS playback.");
+          }
+        })
+        .catch(() => setPlaybackError("The media player could not be loaded."));
+    } else {
+      // Direct video playback (MP4 / WebM / CDN stream)
+      video.src = source;
+      video.addEventListener("loadedmetadata", restorePosition, { once: true });
+    }
 
     return () => {
       cancelled = true;
@@ -104,7 +119,7 @@ export function HlsVideo({
       hlsRef.current = undefined;
       video.removeEventListener("loadedmetadata", restorePosition);
     };
-  }, [mediaId]);
+  }, [mediaId, videoUrl]);
 
   // Sync playback rate & audio settings
   useEffect(() => {
@@ -238,7 +253,7 @@ export function HlsVideo({
               <option value={2} style={{ color: "#000" }}>2.0x</option>
             </select>
           </div>
-          <span>HLS STREAM</span>
+          <span>{mediaId ? "HLS STREAM" : "HD STREAM"}</span>
         </div>
       </div>
     </div>

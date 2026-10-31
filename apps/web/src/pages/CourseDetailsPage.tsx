@@ -105,6 +105,7 @@ export function CourseDetailsPage() {
               <ChevronLeft size={16} /> Course library
             </Link>
             <div className="detail-badges">
+              {course.badge && <span className="highlight-badge">★ {course.badge}</span>}
               <span>{course.category}</span>
               <span>{course.level}</span>
               <span>{course.language}</span>
@@ -112,12 +113,28 @@ export function CourseDetailsPage() {
             <h1>{course.title}</h1>
             <p className="detail-subtitle">{course.subtitle}</p>
             <div className="detail-byline">
-              <span className="avatar avatar-large">
-                {course.instructorName.slice(0, 1)}
-              </span>
-              <span>
-                Made with care by <strong>{course.instructorName}</strong>
-              </span>
+              {course.instructorAvatar ? (
+                <img
+                  className="avatar avatar-large"
+                  src={course.instructorAvatar}
+                  alt={course.instructorName}
+                  style={{ objectFit: "cover" }}
+                />
+              ) : (
+                <span className="avatar avatar-large">
+                  {course.instructorName.slice(0, 1)}
+                </span>
+              )}
+              <div>
+                <span>
+                  Taught by <strong>{course.instructorName}</strong>
+                </span>
+                {course.instructorTitle && (
+                  <small style={{ display: "block", color: "#64748b", fontSize: "11px" }}>
+                    {course.instructorTitle}
+                  </small>
+                )}
+              </div>
               <span className="byline-divider" />
               <span>
                 <Users size={15} /> {data.enrollmentCount} learners
@@ -165,6 +182,53 @@ export function CourseDetailsPage() {
                 <span>{outcome}</span>
               </div>
             ))}
+          </div>
+
+          <div className="detail-section prerequisites-section">
+            <h3>Requirements & Beginner Readiness</h3>
+            {course.prerequisites && course.prerequisites.length > 0 ? (
+              course.prerequisites.map((prereq) => (
+                <div className="outcome-row" key={prereq}>
+                  <CheckCircle2 size={18} color="#6366f1" />
+                  <span>{prereq}</span>
+                </div>
+              ))
+            ) : (
+              <div className="outcome-row">
+                <CheckCircle2 size={18} color="#10b981" />
+                <span>No prior experience needed. Suitable for complete beginners.</span>
+              </div>
+            )}
+          </div>
+
+          <div className="detail-section instructor-card-section">
+            <span className="eyebrow">
+              <span className="eyebrow-line" /> YOUR INSTRUCTOR
+            </span>
+            <div className="instructor-profile-box">
+              <div className="instructor-profile-head">
+                {course.instructorAvatar ? (
+                  <img
+                    className="avatar-instructor"
+                    src={course.instructorAvatar}
+                    alt={course.instructorName}
+                  />
+                ) : (
+                  <div className="avatar-instructor-placeholder">
+                    {course.instructorName.slice(0, 1)}
+                  </div>
+                )}
+                <div>
+                  <h4>{course.instructorName}</h4>
+                  <small className="instructor-title-text">{course.instructorTitle || "Lead Instructor & Industry Mentor"}</small>
+                  <span className="verified-badge">✓ Verified Instructor</span>
+                </div>
+              </div>
+              <p className="instructor-bio-text">
+                {course.instructorBio ||
+                  `${course.instructorName} is an experienced instructor passionate about making complex skills accessible through hands-on, project-based learning.`}
+              </p>
+            </div>
           </div>
 
           <div className="detail-section curriculum">

@@ -14,6 +14,9 @@ export interface Lesson {
   id: string;
   title: string;
   summary?: string;
+  content?: string;
+  type?: "video" | "article" | "exercise";
+  videoUrl?: string;
   durationSeconds: number;
   preview: boolean;
   mediaAssetId?: string;
@@ -52,6 +55,18 @@ export interface InteractiveNote {
   updatedAt: string;
 }
 
+export interface LessonDiscussion {
+  id: string;
+  courseId: string;
+  lessonId: string;
+  studentId: string;
+  studentName: string;
+  question: string;
+  answer?: string;
+  answeredBy?: string;
+  createdAt: string;
+}
+
 export interface CourseSection {
   id: string;
   title: string;
@@ -62,6 +77,9 @@ export interface Course {
   id: string;
   instructorId: string;
   instructorName: string;
+  instructorTitle?: string;
+  instructorAvatar?: string;
+  instructorBio?: string;
   title: string;
   slug: string;
   subtitle: string;
@@ -72,6 +90,7 @@ export interface Course {
   priceMinor: number;
   currency: string;
   thumbnail: string;
+  badge?: string;
   outcomes: string[];
   prerequisites: string[];
   status: CourseStatus;

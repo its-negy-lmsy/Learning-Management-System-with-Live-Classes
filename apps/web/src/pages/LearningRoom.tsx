@@ -4,6 +4,9 @@ import {
   ArrowRight,
   Award,
   Bell,
+  Bookmark,
+  BookmarkCheck,
+  BookOpen,
   Check,
   CheckCircle2,
   ChevronLeft,
@@ -14,9 +17,12 @@ import {
   FileText,
   Link as LinkIcon,
   MessageSquare,
+  MessagesSquare,
   Paperclip,
   Play,
   Plus,
+  Send,
+  Sparkles,
   Trash2,
   Video,
 } from "lucide-react";
@@ -31,6 +37,10 @@ import {
   useAddNoteMutation,
   useDeleteNoteMutation,
   useAnnouncementsQuery,
+  useLessonDiscussionsQuery,
+  useAddLessonDiscussionMutation,
+  useBookmarksQuery,
+  useToggleBookmarkMutation,
 } from "../api";
 import { useAppDispatch, useAppSelector } from "../store";
 import { openLiveRoom } from "../slices/uiSlice";
@@ -39,6 +49,7 @@ import { formatCourseDate } from "../format";
 import { AuthPrompt, ErrorPanel, PageLoading, friendlyError } from "../components/common/UIComponents";
 import { HlsVideo } from "../components/video/HlsVideo";
 import { QuizBlock } from "../components/quiz/QuizBlock";
+import { MarkdownView } from "../components/common/MarkdownView";
 
 function formatTimestamp(seconds: number) {
   const m = Math.floor(seconds / 60);
@@ -61,11 +72,12 @@ export function LearningRoom() {
   const [joinLiveClass, joinState] = useJoinLiveClassMutation();
   const { data: schedule } = useLiveClassesQuery(courseId, { skip: !user });
 
-  const [activeTab, setActiveTab] = useState<"overview" | "notes" | "resources" | "announcements">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "reading" | "notes" | "resources" | "qa" | "announcements">("overview");
   const [currentTime, setCurrentTime] = useState(0);
   const [seekTo, setSeekTo] = useState<number | undefined>(undefined);
   const [noteText, setNoteText] = useState("");
   const [noteTimestamp, setNoteTimestamp] = useState<number>(0);
+  const [questionText, setQuestionText] = useState("");
 
   const lessons = useMemo(
     () => data?.course.sections.flatMap((section) => section.lessons) ?? [],
@@ -78,8 +90,17 @@ export function LearningRoom() {
     { skip: !user || !current?.id }
   );
   const { data: announcementData } = useAnnouncementsQuery(courseId, { skip: !user });
+  const { data: discussionsData } = useLessonDiscussionsQuery(
+    { courseId, lessonId: current?.id ?? "" },
+    { skip: !user || !current?.id }
+  );
+  const { data: bookmarkData } = useBookmarksQuery(courseId, { skip: !user });
   const [addNote, addNoteState] = useAddNoteMutation();
   const [deleteNote] = useDeleteNoteMutation();
+  const [addDiscussion, addDiscussionState] = useAddLessonDiscussionMutation();
+  const [toggleBookmark] = useToggleBookmarkMutation();
+
+  const isBookmarked = Boolean(bookmarkData?.bookmarkedLessonIds?.includes(current?.id ?? ""));
 
   useEffect(() => {
     if (!selectedLesson && lessons.length) {
@@ -167,10 +188,11 @@ export function LearningRoom() {
       <div className="learning-layout">
         <div className="learning-content">
           <div className="video-stage">
-            {current?.mediaAssetId && current.mediaStatus === "READY" ? (
+            {(current?.mediaAssetId && current.mediaStatus === "READY") || current?.videoUrl ? (
               <HlsVideo
-                mediaId={current.mediaAssetId}
-                initialPosition={current.progress?.positionSeconds ?? 0}
+                mediaId={current?.mediaStatus === "READY" ? current?.mediaAssetId : undefined}
+                videoUrl={current?.videoUrl}
+                initialPosition={current?.progress?.positionSeconds ?? 0}
                 seekTo={seekTo}
                 onProgress={onProgress}
                 onSeekComplete={() => setSeekTo(undefined)}
@@ -201,7 +223,7 @@ export function LearningRoom() {
                   <p>
                     {current?.mediaStatus === "PROCESSING"
                       ? "The instructor’s video is still being prepared. Check back in a moment."
-                      : "This lesson is ready for its video. Your instructor will add it to the course soon."}
+                      : "This lesson is ready for its video. You can also read the full lecture guide in the tabs below."}
                   </p>
                 </div>
               </div>
@@ -224,28 +246,41 @@ export function LearningRoom() {
                 <Clock3 size={15} /> {Math.ceil((current?.durationSeconds ?? 0) / 60)} min
               </span>
               {user?.role === "STUDENT" && (
-                <button
-                  className={`button ${current?.progress?.completedAt ? "button-cream" : "button-dark"} mark-complete-btn`}
-                  onClick={async () => {
-                    if (current) {
-                      await completeLesson({
-                        courseId,
-                        lessonId: current.id,
-                        completed: !current?.progress?.completedAt,
-                      }).unwrap();
-                    }
-                  }}
-                >
-                  {current?.progress?.completedAt ? (
-                    <>
-                      <Check size={14} /> Completed
-                    </>
-                  ) : (
-                    <>
-                      <CheckCircle2 size={14} /> Mark complete
-                    </>
-                  )}
-                </button>
+                <>
+                  <button
+                    type="button"
+                    className={`button ${isBookmarked ? "button-dark" : "button-cream"} bookmark-btn`}
+                    onClick={() => {
+                      if (current) toggleBookmark({ courseId, lessonId: current.id });
+                    }}
+                    title={isBookmarked ? "Remove bookmark" : "Bookmark this lesson"}
+                  >
+                    {isBookmarked ? <BookmarkCheck size={14} color="#f59e0b" /> : <Bookmark size={14} />}
+                    {isBookmarked ? "Bookmarked" : "Bookmark"}
+                  </button>
+                  <button
+                    className={`button ${current?.progress?.completedAt ? "button-cream" : "button-dark"} mark-complete-btn`}
+                    onClick={async () => {
+                      if (current) {
+                        await completeLesson({
+                          courseId,
+                          lessonId: current.id,
+                          completed: !current?.progress?.completedAt,
+                        }).unwrap();
+                      }
+                    }}
+                  >
+                    {current?.progress?.completedAt ? (
+                      <>
+                        <Check size={14} /> Completed
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle2 size={14} /> Mark complete
+                      </>
+                    )}
+                  </button>
+                </>
               )}
             </div>
           </div>
@@ -283,7 +318,7 @@ export function LearningRoom() {
             </button>
           </div>
 
-          {/* Interactive Lesson Workspace: Notes, Downloadable Resources, Announcements */}
+          {/* Interactive Lesson Workspace: Notes, Downloadable Resources, Reading Guide, Q&A */}
           <div className="lesson-workspace-tabs">
             <div className="workspace-tab-bar">
               <button
@@ -291,6 +326,13 @@ export function LearningRoom() {
                 onClick={() => setActiveTab("overview")}
               >
                 Overview
+              </button>
+              <button
+                className={`workspace-tab-btn ${activeTab === "reading" ? "active" : ""}`}
+                onClick={() => setActiveTab("reading")}
+              >
+                <BookOpen size={14} />
+                Lecture Guide & Notes
               </button>
               <button
                 className={`workspace-tab-btn ${activeTab === "notes" ? "active" : ""}`}
@@ -310,6 +352,13 @@ export function LearningRoom() {
                 Resources {current?.resources?.length ? `(${current.resources.length})` : ""}
               </button>
               <button
+                className={`workspace-tab-btn ${activeTab === "qa" ? "active" : ""}`}
+                onClick={() => setActiveTab("qa")}
+              >
+                <MessagesSquare size={14} />
+                Class Q&A {discussionsData?.discussions.length ? `(${discussionsData.discussions.length})` : ""}
+              </button>
+              <button
                 className={`workspace-tab-btn ${activeTab === "announcements" ? "active" : ""}`}
                 onClick={() => setActiveTab("announcements")}
               >
@@ -326,7 +375,27 @@ export function LearningRoom() {
                   <div className="overview-meta-chips">
                     <span>Lesson {lessons.findIndex((l) => l.id === current?.id) + 1} of {lessons.length}</span>
                     <span>Status: {current?.progress?.completedAt ? "✓ Completed" : "In progress"}</span>
+                    <span>Format: {current?.videoUrl || current?.mediaAssetId ? "Video + Interactive Notes" : "Reading & Exercises"}</span>
                   </div>
+                  <div className="beginner-tip-banner">
+                    <Sparkles size={16} />
+                    <div>
+                      <strong>Beginner tip:</strong>
+                      <p>Use the <em>Lecture Guide & Notes</em> tab to read code snippets and key syntax at your own pace, or jot down timestamped notes while watching.</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {activeTab === "reading" && (
+                <div className="tab-pane reading-pane">
+                  {current?.content ? (
+                    <MarkdownView content={current.content} />
+                  ) : (
+                    <div className="empty-tab-state">
+                      <p>{current?.summary || "No written lecture notes for this lesson."}</p>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -474,6 +543,81 @@ export function LearningRoom() {
                 </div>
               )}
 
+              {activeTab === "qa" && (
+                <div className="tab-pane qa-pane">
+                  <div className="notes-header-row">
+                    <div>
+                      <h3>Class Q&A & Discussion</h3>
+                      <p>Ask a question about this lesson or see questions asked by other learners.</p>
+                    </div>
+                  </div>
+
+                  {user?.role === "STUDENT" && (
+                    <form
+                      className="note-create-form"
+                      onSubmit={async (e: FormEvent) => {
+                        e.preventDefault();
+                        if (!questionText.trim() || !current) return;
+                        try {
+                          await addDiscussion({
+                            courseId,
+                            lessonId: current.id,
+                            question: questionText.trim(),
+                          }).unwrap();
+                          setQuestionText("");
+                        } catch (err) {
+                          window.alert(friendlyError(err));
+                        }
+                      }}
+                    >
+                      <div className="note-input-row">
+                        <input
+                          type="text"
+                          className="note-text-input"
+                          placeholder="Ask a question about this lesson…"
+                          value={questionText}
+                          onChange={(e) => setQuestionText(e.target.value)}
+                        />
+                        <button
+                          type="submit"
+                          className="button button-dark"
+                          disabled={addDiscussionState.isLoading || !questionText.trim()}
+                        >
+                          <Send size={13} /> Ask Question
+                        </button>
+                      </div>
+                    </form>
+                  )}
+
+                  <div className="discussions-list">
+                    {discussionsData?.discussions && discussionsData.discussions.length > 0 ? (
+                      discussionsData.discussions.map((d) => (
+                        <div key={d.id} className="discussion-card">
+                          <div className="discussion-header">
+                            <span className="avatar avatar-small">{d.studentName.slice(0, 1)}</span>
+                            <div>
+                              <strong>{d.studentName}</strong>
+                              <small>{new Date(d.createdAt).toLocaleDateString()}</small>
+                            </div>
+                          </div>
+                          <p className="discussion-question">{d.question}</p>
+                          {d.answer && (
+                            <div className="discussion-instructor-answer">
+                              <strong>Answer from {d.answeredBy || "Instructor"}:</strong>
+                              <p>{d.answer}</p>
+                            </div>
+                          )}
+                        </div>
+                      ))
+                    ) : (
+                      <div className="empty-tab-state">
+                        <p>No questions asked yet for this lesson. Be the first to ask!</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {activeTab === "announcements" && (
                 <div className="tab-pane announcements-pane">
                   <h3>Course Announcements</h3>
@@ -590,6 +734,7 @@ export function LearningRoom() {
                     <small>
                       {Math.ceil(lesson.durationSeconds / 60)} min{" "}
                       {lesson.mediaStatus === "PROCESSING" ? "· preparing video" : ""}
+                      {bookmarkData?.bookmarkedLessonIds?.includes(lesson.id) ? " · ★ Bookmarked" : ""}
                     </small>
                   </span>
                   <ChevronRight size={14} />

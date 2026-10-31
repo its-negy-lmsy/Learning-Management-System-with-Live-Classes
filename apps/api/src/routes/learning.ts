@@ -213,3 +213,54 @@ learningRouter.get("/instructor/courses/:courseId/learners", authenticate, allow
     }),
   });
 }));
+
+learningRouter.get("/courses/:courseId/lessons/:lessonId/discussions", authenticate, asyncRoute(async (req, res) => {
+  const courseId = pathParam(req, "courseId");
+  const lessonId = pathParam(req, "lessonId");
+  const discussions = (await all<{ id: string; courseId: string; lessonId: string; studentId: string; studentName: string; question: string; answer?: string; answeredBy?: string; createdAt: string }>("lesson_discussions"))
+    .filter((d) => d.courseId === courseId && d.lessonId === lessonId)
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  res.json({ discussions });
+}));
+
+learningRouter.post("/courses/:courseId/lessons/:lessonId/discussions", authenticate, asyncRoute(async (req, res) => {
+  const courseId = pathParam(req, "courseId");
+  const lessonId = pathParam(req, "lessonId");
+  const course = await requireCourse(courseId);
+  if (req.user!.role === "STUDENT") await requireEnrollment(course.id, req.user!.id);
+  const input = z.object({ question: z.string().trim().min(3).max(1000) }).parse(req.body);
+  const discussion = {
+    id: id(),
+    courseId,
+    lessonId,
+    studentId: req.user!.id,
+    studentName: req.user!.name,
+    question: input.question,
+    createdAt: now(),
+  };
+  await insert("lesson_discussions", discussion);
+  res.status(201).json({ discussion });
+}));
+
+learningRouter.get("/courses/:courseId/bookmarks", authenticate, asyncRoute(async (req, res) => {
+  const courseId = pathParam(req, "courseId");
+  const bookmarks = (await all<{ id: string; courseId: string; studentId: string; lessonId: string; createdAt: string }>("lesson_bookmarks"))
+    .filter((b) => b.courseId === courseId && b.studentId === req.user!.id);
+  res.json({ bookmarkedLessonIds: bookmarks.map((b) => b.lessonId) });
+}));
+
+learningRouter.post("/courses/:courseId/bookmarks", authenticate, asyncRoute(async (req, res) => {
+  const courseId = pathParam(req, "courseId");
+  const input = z.object({ lessonId: z.string().min(1) }).parse(req.body);
+  const existing = (await all<{ id: string; courseId: string; studentId: string; lessonId: string }>("lesson_bookmarks"))
+    .find((b) => b.courseId === courseId && b.studentId === req.user!.id && b.lessonId === input.lessonId);
+  if (existing) {
+    await remove("lesson_bookmarks", existing.id);
+    res.json({ bookmarked: false, lessonId: input.lessonId });
+    return;
+  }
+  const bookmark = { id: id(), courseId, studentId: req.user!.id, lessonId: input.lessonId, createdAt: now() };
+  await insert("lesson_bookmarks", bookmark);
+  res.status(201).json({ bookmarked: true, lessonId: input.lessonId });
+}));
+

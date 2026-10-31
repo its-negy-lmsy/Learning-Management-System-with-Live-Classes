@@ -1,9 +1,9 @@
 import { createApi, fetchBaseQuery } from "@reduxjs/toolkit/query/react";
-import type { Course, Role, CourseReview, CourseAnnouncement, LessonResource, InteractiveNote } from "@fs03/shared";
+import type { Course, Role, CourseReview, CourseAnnouncement, LessonResource, InteractiveNote, LessonDiscussion } from "@fs03/shared";
 
 export type User = { id: string; name: string; email: string; role: Role };
 export type Media = { id: string; status: string; progress: number; metadata?: { durationSeconds?: number }; failureReason?: string };
-export type LessonView = { id: string; title: string; summary?: string; durationSeconds: number; preview: boolean; mediaAssetId?: string; mediaStatus?: string; resources?: LessonResource[]; progress?: { positionSeconds: number; completedAt?: string } };
+export type LessonView = { id: string; title: string; summary?: string; content?: string; type?: "video" | "article" | "exercise"; videoUrl?: string; durationSeconds: number; preview: boolean; mediaAssetId?: string; mediaStatus?: string; resources?: LessonResource[]; progress?: { positionSeconds: number; completedAt?: string } };
 export type LearningData = { course: Omit<Course, "sections"> & { sections: Array<{ id: string; title: string; lessons: LessonView[] }> }; completion: { completed: boolean; completedLessons: number; totalLessons: number; quizComplete: boolean } };
 
 const rawBaseQuery = fetchBaseQuery({ baseUrl: "/api/v1", credentials: "include" });
@@ -19,7 +19,7 @@ const baseQuery: typeof rawBaseQuery = async (args, api, extraOptions) => {
 export const lmsApi = createApi({
   reducerPath: "lmsApi",
   baseQuery,
-  tagTypes: ["User", "Courses", "Course", "Enrollments", "Learning", "Earnings", "Media", "Quiz", "LiveClasses", "LiveChat", "Certificates", "Reviews", "Announcements", "Notes", "Resources", "Learners"],
+  tagTypes: ["User", "Courses", "Course", "Enrollments", "Learning", "Earnings", "Media", "Quiz", "LiveClasses", "LiveChat", "Certificates", "Reviews", "Announcements", "Notes", "Resources", "Learners", "Discussions", "Bookmarks"],
   endpoints: (builder) => ({
     me: builder.query<{ user: User }, void>({ query: () => "/auth/me", providesTags: ["User"] }),
     login: builder.mutation<{ user: User }, { email: string; password: string }>({ query: (body) => ({ url: "/auth/login", method: "POST", body }), invalidatesTags: ["User"] }),
@@ -77,6 +77,12 @@ export const lmsApi = createApi({
     deleteLessonResource: builder.mutation<{ success: boolean; resources: LessonResource[] }, { courseId: string; lessonId: string; resourceId: string }>({ query: ({ courseId, lessonId, resourceId }) => ({ url: `/instructor/courses/${courseId}/lessons/${lessonId}/resources/${resourceId}`, method: "DELETE" }), invalidatesTags: ["Courses", "Course", "Learning"] }),
     // Instructor Learner Analytics
     instructorLearners: builder.query<{ learners: Array<{ enrollment: unknown; student?: { name: string; email: string }; completedLessons: number; totalLessons: number; progressPercent: number; quizPassed: boolean; quizScore?: number; certificateNumber?: string }> }, string>({ query: (courseId) => `/instructor/courses/${courseId}/learners`, providesTags: ["Learners"] }),
+    // Lesson Discussions & Q&A
+    lessonDiscussions: builder.query<{ discussions: LessonDiscussion[] }, { courseId: string; lessonId: string }>({ query: ({ courseId, lessonId }) => `/courses/${courseId}/lessons/${lessonId}/discussions`, providesTags: ["Discussions"] }),
+    addLessonDiscussion: builder.mutation<{ discussion: LessonDiscussion }, { courseId: string; lessonId: string; question: string }>({ query: ({ courseId, lessonId, ...body }) => ({ url: `/courses/${courseId}/lessons/${lessonId}/discussions`, method: "POST", body }), invalidatesTags: ["Discussions"] }),
+    // Lesson Bookmarks
+    bookmarks: builder.query<{ bookmarkedLessonIds: string[] }, string>({ query: (courseId) => `/courses/${courseId}/bookmarks`, providesTags: ["Bookmarks"] }),
+    toggleBookmark: builder.mutation<{ bookmarked: boolean; lessonId: string }, { courseId: string; lessonId: string }>({ query: ({ courseId, ...body }) => ({ url: `/courses/${courseId}/bookmarks`, method: "POST", body }), invalidatesTags: ["Bookmarks"] }),
   }),
 });
 
@@ -92,4 +98,5 @@ export const {
   useReviewsQuery, useAddReviewMutation, useAnnouncementsQuery, useAddAnnouncementMutation,
   useLessonNotesQuery, useAddNoteMutation, useDeleteNoteMutation,
   useAddLessonResourceMutation, useDeleteLessonResourceMutation, useInstructorLearnersQuery,
+  useLessonDiscussionsQuery, useAddLessonDiscussionMutation, useBookmarksQuery, useToggleBookmarkMutation,
 } = lmsApi;

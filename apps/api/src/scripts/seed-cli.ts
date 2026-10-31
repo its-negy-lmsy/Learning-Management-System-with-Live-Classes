@@ -1,2 +1,10 @@
 import { seedDemoData } from "./seed.js";
-seedDemoData().catch((error) => { console.error(error); process.exitCode = 1; });
+seedDemoData(true)
+  .then(() => {
+    console.log("Seed completed successfully.");
+    process.exit(0);
+  })
+  .catch((error) => {
+    console.error(error);
+    process.exit(1);
+  });
