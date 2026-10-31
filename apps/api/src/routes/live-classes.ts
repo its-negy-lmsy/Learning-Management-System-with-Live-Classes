@@ -69,7 +69,6 @@ liveClassesRouter.get(
       .sort((a, b) => a.startsAt.localeCompare(b.startsAt));
 
     const providerConfigured = Boolean(config.livekitUrl && config.livekitApiKey && config.livekitApiSecret);
-    // Even if cloud LiveKit is not configured, local WebRTC classroom mode is always available!
     res.json({ sessions, providerConfigured: true, cloudLiveKitConfigured: providerConfigured });
   })
 );
@@ -94,18 +93,39 @@ liveClassesRouter.post(
     }
 
     const course = await requireCourse(session.courseId);
-    if (req.user!.id !== session.instructorId && req.user!.role !== "ADMIN") {
+    const isInstructor = req.user!.id === session.instructorId || req.user!.role === "ADMIN";
+    if (!isInstructor) {
       await requireEnrollment(course.id, req.user!.id);
     }
 
+    if (session.status === "CANCELLED") {
+      throw new HttpError(409, "SESSION_UNAVAILABLE", "This live class has been cancelled.");
+    }
+    if (session.status === "ENDED") {
+      throw new HttpError(409, "SESSION_UNAVAILABLE", "This live class has already ended.");
+    }
+
     const nowMs = Date.now();
-    // In dev / demo mode or test windows, allow joining up to 30 mins before or after
-    if (
-      (nowMs < new Date(session.startsAt).getTime() - 30 * 60_000 ||
-        nowMs > new Date(session.endsAt).getTime() + 60 * 60_000) &&
-      session.status === "CANCELLED"
-    ) {
-      throw new HttpError(409, "SESSION_UNAVAILABLE", "This class is not open for joining right now.");
+    const startsAtMs = new Date(session.startsAt).getTime();
+    const endsAtMs = new Date(session.endsAt).getTime();
+
+    // Students can join when class is LIVE, or within 30 minutes before startsAt through 30 minutes after endsAt
+    if (!isInstructor && session.status !== "LIVE") {
+      if (nowMs < startsAtMs - 30 * 60_000) {
+        throw new HttpError(
+          409,
+          "SESSION_NOT_STARTED",
+          "This class is scheduled for later. The room opens 30 minutes before the session starts."
+        );
+      }
+      if (nowMs > endsAtMs + 30 * 60_000) {
+        throw new HttpError(409, "SESSION_EXPIRED", "This scheduled live class session has ended.");
+      }
+    }
+
+    // When the instructor launches/joins a scheduled class, advance status to LIVE
+    if (isInstructor && session.status === "SCHEDULED") {
+      await update<{ id: string; status: string }>("live_classes", session.id, { status: "LIVE" });
     }
 
     // Record attendance
@@ -178,5 +198,70 @@ liveClassesRouter.post(
       { status: "ENDED", endedAt: now() }
     );
     res.json({ session: updated });
+  })
+);
+
+liveClassesRouter.get(
+  "/live-classes/:sessionId/messages",
+  authenticate,
+  asyncRoute(async (req, res) => {
+    const session = await get<{ id: string; courseId: string; instructorId: string }>(
+      "live_classes",
+      pathParam(req, "sessionId")
+    );
+    if (!session) throw new HttpError(404, "SESSION_NOT_FOUND", "We couldn't find that class.");
+    const course = await requireCourse(session.courseId);
+    if (req.user!.id !== session.instructorId && req.user!.role !== "ADMIN") {
+      await requireEnrollment(course.id, req.user!.id);
+    }
+    const allMessages = await all<{
+      id: string;
+      sessionId: string;
+      senderId: string;
+      senderName: string;
+      senderRole: string;
+      text: string;
+      createdAt: string;
+    }>("live_messages");
+    const messages = allMessages
+      .filter((m) => m.sessionId === session.id)
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    res.json({ messages });
+  })
+);
+
+liveClassesRouter.post(
+  "/live-classes/:sessionId/messages",
+  authenticate,
+  asyncRoute(async (req, res) => {
+    const session = await get<{ id: string; courseId: string; instructorId: string; status: string }>(
+      "live_classes",
+      pathParam(req, "sessionId")
+    );
+    if (!session) throw new HttpError(404, "SESSION_NOT_FOUND", "We couldn't find that class.");
+    const course = await requireCourse(session.courseId);
+    if (req.user!.id !== session.instructorId && req.user!.role !== "ADMIN") {
+      await requireEnrollment(course.id, req.user!.id);
+    }
+    if (session.status === "ENDED" || session.status === "CANCELLED") {
+      throw new HttpError(409, "SESSION_UNAVAILABLE", "Cannot send messages to an inactive live class.");
+    }
+    const input = z
+      .object({
+        text: z.string().trim().min(1).max(1000),
+      })
+      .parse(req.body);
+
+    const message = {
+      id: id(),
+      sessionId: session.id,
+      senderId: req.user!.id,
+      senderName: req.user!.name,
+      senderRole: req.user!.role,
+      text: input.text,
+      createdAt: now(),
+    };
+    await insert("live_messages", message);
+    res.status(201).json({ message });
   })
 );

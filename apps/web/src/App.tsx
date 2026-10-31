@@ -13,8 +13,14 @@ import { InstructorApplicationPage } from "./pages/InstructorApplicationPage";
 import { LearningRoom } from "./pages/LearningRoom";
 import { VerifyCertificate } from "./pages/VerifyCertificate";
 import { CheckoutReturn } from "./pages/CheckoutReturn";
+import { useAppDispatch, useAppSelector } from "./store";
+import { closeLiveRoom } from "./slices/uiSlice";
+import { LiveRoom } from "./components/live/LiveRoom";
 
 export function App() {
+  const dispatch = useAppDispatch();
+  const activeLiveRoom = useAppSelector((state) => state.ui.activeLiveRoom);
+
   return (
     <>
       <Header />
@@ -36,6 +42,15 @@ export function App() {
         </Routes>
       </main>
       <Footer />
+      {activeLiveRoom && (
+        <LiveRoom
+          sessionId={activeLiveRoom.sessionId}
+          url={activeLiveRoom.url}
+          token={activeLiveRoom.token}
+          title={activeLiveRoom.title}
+          onClose={() => dispatch(closeLiveRoom())}
+        />
+      )}
     </>
   );
 }

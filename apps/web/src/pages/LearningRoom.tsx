@@ -33,13 +33,12 @@ import {
   useAnnouncementsQuery,
 } from "../api";
 import { useAppDispatch, useAppSelector } from "../store";
-import { openLiveRoom, closeLiveRoom } from "../slices/uiSlice";
+import { openLiveRoom } from "../slices/uiSlice";
 import { setCurrentLesson } from "../slices/playerSlice";
 import { formatCourseDate } from "../format";
 import { AuthPrompt, ErrorPanel, PageLoading, friendlyError } from "../components/common/UIComponents";
 import { HlsVideo } from "../components/video/HlsVideo";
 import { QuizBlock } from "../components/quiz/QuizBlock";
-import { LiveRoom } from "../components/live/LiveRoom";
 
 function formatTimestamp(seconds: number) {
   const m = Math.floor(seconds / 60);
@@ -51,7 +50,6 @@ export function LearningRoom() {
   const { courseId = "" } = useParams();
   const dispatch = useAppDispatch();
   const user = useAppSelector((state) => state.auth.user);
-  const activeLiveRoom = useAppSelector((state) => state.ui.activeLiveRoom);
 
   const { data, isLoading, error } = useLearningQuery(courseId, { skip: !user });
   const [selectedLesson, setSelectedLesson] = useState("");
@@ -175,6 +173,7 @@ export function LearningRoom() {
                 initialPosition={current.progress?.positionSeconds ?? 0}
                 seekTo={seekTo}
                 onProgress={onProgress}
+                onSeekComplete={() => setSeekTo(undefined)}
                 onTimeUpdate={(t) => {
                   setCurrentTime(t);
                   if (!noteTimestamp) setNoteTimestamp(Math.round(t));
@@ -229,7 +228,11 @@ export function LearningRoom() {
                   className={`button ${current?.progress?.completedAt ? "button-cream" : "button-dark"} mark-complete-btn`}
                   onClick={async () => {
                     if (current) {
-                      await completeLesson({ courseId, lessonId: current.id }).unwrap();
+                      await completeLesson({
+                        courseId,
+                        lessonId: current.id,
+                        completed: !current?.progress?.completedAt,
+                      }).unwrap();
                     }
                   }}
                 >
@@ -634,15 +637,6 @@ export function LearningRoom() {
           </div>
         </aside>
       </div>
-
-      {activeLiveRoom && (
-        <LiveRoom
-          url={activeLiveRoom.url}
-          token={activeLiveRoom.token}
-          title={activeLiveRoom.title}
-          onClose={() => dispatch(closeLiveRoom())}
-        />
-      )}
     </section>
   );
 }

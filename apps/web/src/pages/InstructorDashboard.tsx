@@ -20,6 +20,7 @@ import {
   ShieldCheck,
   Trash2,
   Users,
+  Video,
   X,
 } from "lucide-react";
 import {
@@ -37,9 +38,13 @@ import {
   useAddLessonResourceMutation,
   useDeleteLessonResourceMutation,
   useInstructorLearnersQuery,
+  useLiveClassesQuery,
+  useJoinLiveClassMutation,
+  useEndLiveClassMutation,
 } from "../api";
-import { useAppSelector } from "../store";
-import { formatMoney } from "../format";
+import { useAppDispatch, useAppSelector } from "../store";
+import { openLiveRoom } from "../slices/uiSlice";
+import { formatCourseDate, formatMoney } from "../format";
 import { InstructorQuizBuilder } from "../components/quiz/InstructorQuizBuilder";
 import { AuthPrompt, ErrorPanel, NavigateTo, Stat, friendlyError, rolePath } from "../components/common/UIComponents";
 import type { Course } from "@fs03/shared";
@@ -196,6 +201,10 @@ export function InstructorDashboard() {
 
   const { data: announcementData } = useAnnouncementsQuery(active?.id ?? "", { skip: !active });
   const { data: learnersData } = useInstructorLearnersQuery(active?.id ?? "", { skip: !active });
+  const { data: liveData } = useLiveClassesQuery(active?.id ?? "", { skip: !active });
+  const dispatch = useAppDispatch();
+  const [joinClass, joinState] = useJoinLiveClassMutation();
+  const [endClass, endState] = useEndLiveClassMutation();
   const [addAnnouncement, addAnnState] = useAddAnnouncementMutation();
   const [addResource, addResState] = useAddLessonResourceMutation();
   const [deleteResource] = useDeleteLessonResourceMutation();
@@ -832,29 +841,105 @@ export function InstructorDashboard() {
               together.
             </p>
             {active ? (
-              <form onSubmit={handleClass}>
-                <label>
-                  Class title
-                  <input
-                    required
-                    value={sessionTitle}
-                    onChange={(event) => setSessionTitle(event.target.value)}
-                    placeholder="Studio Q&A"
-                  />
-                </label>
-                <label>
-                  Starts at
-                  <input
-                    required
-                    type="datetime-local"
-                    value={sessionTime}
-                    onChange={(event) => setSessionTime(event.target.value)}
-                  />
-                </label>
-                <button className="button button-dark" disabled={classState.isLoading}>
-                  Schedule class <ArrowRight size={15} />
-                </button>
-              </form>
+              <>
+                <form onSubmit={handleClass}>
+                  <label>
+                    Class title
+                    <input
+                      required
+                      value={sessionTitle}
+                      onChange={(event) => setSessionTitle(event.target.value)}
+                      placeholder="Studio Q&A"
+                    />
+                  </label>
+                  <label>
+                    Starts at
+                    <input
+                      required
+                      type="datetime-local"
+                      value={sessionTime}
+                      onChange={(event) => setSessionTime(event.target.value)}
+                    />
+                  </label>
+                  <button className="button button-dark" disabled={classState.isLoading}>
+                    Schedule class <ArrowRight size={15} />
+                  </button>
+                </form>
+
+                {liveData?.sessions && liveData.sessions.length > 0 && (
+                  <div className="instructor-live-sessions" style={{ marginTop: "16px", borderTop: "1px solid var(--border, #e5e7eb)", paddingTop: "12px" }}>
+                    <span className="side-card-label" style={{ fontSize: "11px", fontWeight: 700, letterSpacing: "0.05em", color: "var(--muted, #6b7280)", textTransform: "uppercase" }}>Scheduled Sessions</span>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginTop: "8px" }}>
+                      {liveData.sessions.map((sess) => (
+                        <div
+                          key={sess.id}
+                          style={{
+                            padding: "10px",
+                            background: "rgba(0,0,0,0.02)",
+                            border: "1px solid var(--border, #e5e7eb)",
+                            borderRadius: "6px",
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: "6px",
+                          }}
+                        >
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                            <strong style={{ fontSize: "13px" }}>{sess.title}</strong>
+                            <span className={`status-pill status-${sess.status.toLowerCase()}`}>
+                              {sess.status}
+                            </span>
+                          </div>
+                          <small style={{ color: "#6b7280" }}>{formatCourseDate(sess.startsAt)}</small>
+                          {sess.status !== "ENDED" && sess.status !== "CANCELLED" && (
+                            <div style={{ display: "flex", gap: "6px", marginTop: "4px" }}>
+                              <button
+                                type="button"
+                                className="button button-cream"
+                                style={{ padding: "4px 8px", fontSize: "11px" }}
+                                disabled={joinState.isLoading}
+                                onClick={async () => {
+                                  try {
+                                    const result = await joinClass(sess.id).unwrap();
+                                    dispatch(
+                                      openLiveRoom({
+                                        sessionId: sess.id,
+                                        url: result.url,
+                                        token: result.token,
+                                        title: result.session.title,
+                                        provider: result.provider,
+                                      })
+                                    );
+                                  } catch (err) {
+                                    setError(friendlyError(err));
+                                  }
+                                }}
+                              >
+                                <Video size={12} /> Launch Studio
+                              </button>
+                              <button
+                                type="button"
+                                className="button"
+                                style={{ padding: "4px 8px", fontSize: "11px", background: "transparent", border: "1px solid #d1d5db" }}
+                                disabled={endState.isLoading}
+                                onClick={async () => {
+                                  try {
+                                    await endClass(sess.id).unwrap();
+                                    setNotice("Live class concluded.");
+                                  } catch (err) {
+                                    setError(friendlyError(err));
+                                  }
+                                }}
+                              >
+                                End
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
             ) : (
               <p className="quiet-note">Create a course first to schedule a class.</p>
             )}

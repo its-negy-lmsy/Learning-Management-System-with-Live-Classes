@@ -110,25 +110,28 @@ learningRouter.get("/instructor/courses/:courseId/quiz", authenticate, allowRole
 }));
 
 learningRouter.post("/lessons/:lessonId/complete", authenticate, allowRoles("STUDENT"), asyncRoute(async (req, res) => {
-  const input = z.object({ courseId: z.string().uuid() }).parse(req.body);
+  const input = z.object({ courseId: z.string().uuid(), completed: z.boolean().optional() }).parse(req.body);
   const course = await requireCourse(input.courseId);
   await requireEnrollment(course.id, req.user!.id);
   const { lesson } = findLesson(course, pathParam(req, "lessonId"));
   const timestamp = now();
   const existing = (await all<Progress>("lesson_progress")).find((item) => item.studentId === req.user!.id && item.lessonId === lesson.id);
+
+  const shouldBeCompleted = input.completed !== undefined ? input.completed : !existing?.completedAt;
+
   const next: Progress = {
     id: existing?.id ?? id(),
     studentId: req.user!.id,
     courseId: course.id,
     lessonId: lesson.id,
     positionSeconds: existing?.positionSeconds ?? lesson.durationSeconds,
-    watchedSeconds: existing?.watchedSeconds ?? lesson.durationSeconds,
-    completedAt: existing?.completedAt ?? timestamp,
+    watchedSeconds: existing?.watchedSeconds ?? (shouldBeCompleted ? lesson.durationSeconds : 0),
+    completedAt: shouldBeCompleted ? (existing?.completedAt ?? timestamp) : undefined,
     lastHeartbeatAt: timestamp,
     updatedAt: timestamp,
   };
   if (existing) await update<Progress>("lesson_progress", existing.id, next); else await insert("lesson_progress", next);
-  res.json({ progress: next });
+  res.json({ progress: next, completed: shouldBeCompleted });
 }));
 
 learningRouter.get("/courses/:courseId/lessons/:lessonId/notes", authenticate, allowRoles("STUDENT", "INSTRUCTOR"), asyncRoute(async (req, res) => {

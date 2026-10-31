@@ -19,6 +19,7 @@ import {
 import {
   useCourseQuery,
   useEnrollMutation,
+  useEnrollmentsQuery,
   useCheckoutMutation,
   useMockConfirmMutation,
   useReviewsQuery,
@@ -33,6 +34,9 @@ export function CourseDetailsPage() {
   const { courseId = "" } = useParams();
   const user = useAppSelector((state) => state.auth.user);
   const { data, isLoading, error } = useCourseQuery(courseId);
+  const { data: enrollmentsData } = useEnrollmentsQuery(undefined, {
+    skip: !user || user.role !== "STUDENT",
+  });
   const { data: reviewData } = useReviewsQuery(courseId);
   const { data: announcementData } = useAnnouncementsQuery(courseId);
   const [addReview, reviewMutation] = useAddReviewMutation();
@@ -46,6 +50,10 @@ export function CourseDetailsPage() {
   const [reviewMessage, setReviewMessage] = useState("");
 
   const course = data?.course;
+  const isEnrolled = Boolean(
+    enrollmentsData?.enrollments?.some((item) => item.course.id === course?.id)
+  );
+
   if (isLoading) return <PageLoading />;
   if (!course) {
     return (
@@ -61,6 +69,10 @@ export function CourseDetailsPage() {
   const startCourse = async () => {
     if (!user) {
       navigate("/login?returnTo=" + encodeURIComponent(`/course/${course.id}`));
+      return;
+    }
+    if (isEnrolled) {
+      navigate(`/learn/${course.id}`);
       return;
     }
     try {
@@ -357,11 +369,17 @@ export function CourseDetailsPage() {
               <small>one-time access</small>
             </div>
             <button onClick={startCourse} className="button button-dark enroll-button">
-              {course.priceMinor ? "Join this course" : "Start learning"}
+              {isEnrolled
+                ? "Continue learning"
+                : course.priceMinor
+                ? "Join this course"
+                : "Start learning"}
               <ArrowRight size={16} />
             </button>
             {user?.role === "STUDENT" && (
-              <small className="quiet-note">Your progress saves as you go.</small>
+              <small className="quiet-note">
+                {isEnrolled ? "You are enrolled in this course." : "Your progress saves as you go."}
+              </small>
             )}
             {user && user.id === course.instructorId && (
               <Link className="button button-cream enroll-button" to="/instructor">

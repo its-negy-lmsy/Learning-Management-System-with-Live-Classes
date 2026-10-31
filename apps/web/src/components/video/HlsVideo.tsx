@@ -10,12 +10,14 @@ export function HlsVideo({
   seekTo,
   onProgress,
   onTimeUpdate,
+  onSeekComplete,
 }: {
   mediaId: string;
   initialPosition: number;
   seekTo?: number;
   onProgress: (position: number, playing: boolean) => void;
   onTimeUpdate?: (currentTime: number) => void;
+  onSeekComplete?: () => void;
 }) {
   const dispatch = useAppDispatch();
   const playbackRate = useAppSelector((state) => state.player.playbackRate);
@@ -34,8 +36,9 @@ export function HlsVideo({
     if (typeof seekTo === "number" && videoRef.current && Number.isFinite(seekTo)) {
       videoRef.current.currentTime = seekTo;
       void videoRef.current.play().catch(() => {});
+      onSeekComplete?.();
     }
-  }, [seekTo]);
+  }, [seekTo, onSeekComplete]);
 
   // Initialize HLS
   useEffect(() => {

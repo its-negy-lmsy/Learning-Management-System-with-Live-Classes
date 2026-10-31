@@ -25,7 +25,7 @@ async function signIn(email, password) {
 async function main() {
   const health = await fetch(`${origin}/health`);
   assert(health.ok, "API health endpoint is unavailable.");
-  const catalog = await request("/courses");
+  const catalog = await request("/courses?limit=50");
   assert(catalog.response.ok && catalog.data.total >= 3, "Seeded course catalog is not available.");
   const instructor = await signIn("teacher@fs03.demo", "TeachFS03!Local");
   const learner = await signIn("learner@fs03.demo", "LearnFS03!Local");
@@ -96,7 +96,9 @@ async function main() {
   const buyerEmail = `buyer_${Date.now()}@fs03.demo`;
   const buyerRegister = await request("/auth/register", { method: "POST", body: { name: "Test Buyer", email: buyerEmail, password: "LearnFS03!Local" } });
   const buyerCookies = buyerRegister.response.headers.getSetCookie().map((c) => c.split(";")[0]).join("; ");
-  const paidCourse = catalog.data.courses.find((item) => item.priceMinor > 0);
+  const paidCatalog = await request("/courses?limit=50");
+  const paidCourse = paidCatalog.data.courses.find((item) => item.priceMinor > 0);
+  assert(paidCourse, "Could not find a paid course in the catalog for checkout verification.");
   const checkout = await request(`/courses/${paidCourse.id}/checkout`, { method: "POST", cookies: buyerCookies });
   assert(checkout.response.status === 201 && checkout.data.mock, `Demo test checkout was not created: ${JSON.stringify(checkout.data)}`);
   const confirmation = await request(`/payments/${checkout.data.payment.id}/mock-confirm`, { method: "POST", cookies: buyerCookies });
@@ -144,6 +146,61 @@ async function main() {
   const learnerAnalytics = await request(`/instructor/courses/${course.id}/learners`, { cookies: instructor });
   assert(learnerAnalytics.response.ok && learnerAnalytics.data.learners?.length > 0, "Instructor learner analytics failed.");
 
+  // Test Live Classes Full Workflow
+  const futureStart = new Date(Date.now() + 10 * 60_000).toISOString();
+  const scheduleLive = await request(`/instructor/courses/${course.id}/live-classes`, {
+    method: "POST",
+    cookies: instructor,
+    body: { title: "Hands-on Live Studio Lab", startsAt: futureStart, durationMinutes: 45 }
+  });
+  assert(scheduleLive.response.status === 201 && scheduleLive.data.session?.id, "Live class scheduling failed.");
+  const sessionId = scheduleLive.data.session.id;
+
+  const liveClassesList = await request(`/courses/${course.id}/live-classes`, { cookies: learner });
+  assert(liveClassesList.response.ok && liveClassesList.data.sessions.some((s) => s.id === sessionId), "Live classes retrieval failed.");
+
+  // Instructor joins class (advances status to LIVE)
+  const instructorJoin = await request(`/live-classes/${sessionId}/join`, { method: "POST", cookies: instructor });
+  assert(instructorJoin.response.ok && instructorJoin.data.provider, "Instructor joining live class failed.");
+
+  // Learner joins active live class
+  const learnerJoin = await request(`/live-classes/${sessionId}/join`, { method: "POST", cookies: learner });
+  assert(learnerJoin.response.ok && learnerJoin.data.session?.id === sessionId, "Learner joining live class failed.");
+
+  // Live class persistent chat messages
+  const sendChatMessage = await request(`/live-classes/${sessionId}/messages`, {
+    method: "POST",
+    cookies: instructor,
+    body: { text: "Welcome to the studio everyone!" }
+  });
+  assert(sendChatMessage.response.status === 201 && sendChatMessage.data.message?.text.includes("Welcome"), "Live chat posting failed.");
+
+  const chatMessages = await request(`/live-classes/${sessionId}/messages`, { cookies: learner });
+  assert(chatMessages.response.ok && chatMessages.data.messages.length > 0, "Live chat message retrieval failed.");
+
+  // Test Lesson Completion Toggle (off and on)
+  const toggleCompleteOff = await request(`/lessons/${lesson.id}/complete`, {
+    method: "POST",
+    cookies: learner,
+    body: { courseId: course.id, completed: false }
+  });
+  assert(toggleCompleteOff.response.ok && !toggleCompleteOff.data.completed && toggleCompleteOff.data.progress.completedAt === undefined, "Toggling lesson completion off failed.");
+
+  const toggleCompleteOn = await request(`/lessons/${lesson.id}/complete`, {
+    method: "POST",
+    cookies: learner,
+    body: { courseId: course.id, completed: true }
+  });
+  assert(toggleCompleteOn.response.ok && toggleCompleteOn.data.completed && toggleCompleteOn.data.progress.completedAt, "Toggling lesson completion on failed.");
+
+  // Instructor ends the live class
+  const endClass = await request(`/live-classes/${sessionId}/end`, { method: "POST", cookies: instructor });
+  assert(endClass.response.ok && endClass.data.session.status === "ENDED", "Ending live class failed.");
+
+  // Joining an ended live class must be rejected with 409 SESSION_UNAVAILABLE
+  const joinEnded = await request(`/live-classes/${sessionId}/join`, { method: "POST", cookies: learner });
+  assert(joinEnded.response.status === 409, "Joining an ended live class was not properly rejected with 409.");
+
   const pdfBytes = await pdf.arrayBuffer();
   console.log(JSON.stringify({
     status: "passed",
@@ -165,6 +222,11 @@ async function main() {
     interactiveNotesCount: notes.data.notes.length,
     verifiedReviewAverage: reviews.data.stats.averageRating,
     enrolledLearnerAnalytics: learnerAnalytics.data.learners.length,
+    liveClassScheduled: scheduleLive.data.session.title,
+    liveClassChatCount: chatMessages.data.messages.length,
+    liveClassEndedStatus: endClass.data.session.status,
+    endedClassJoinProtection: joinEnded.response.status === 409,
+    lessonToggleCompleted: toggleCompleteOn.data.completed,
   }, null, 2));
 }
 
