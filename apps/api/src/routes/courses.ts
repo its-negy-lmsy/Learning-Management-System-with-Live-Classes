@@ -1,11 +1,27 @@
 import { Router } from "express";
 import { z } from "zod";
-import { categories, type CourseSection } from "@fs03/shared";
+import { categories, type CourseSection, type CourseReview, type CourseAnnouncement, type LessonResource } from "@fs03/shared";
 import { all, get, insert, update } from "../db/store.js";
 import { id, now, slugify } from "../utils/ids.js";
 import { allowRoles, authenticate, optionalAuthenticate } from "../utils/auth.js";
 import { asyncRoute, HttpError, pathParam } from "../utils/http.js";
-import { findLesson, requireCourse, requireCourseOwner, type CourseRecord } from "./course-utils.js";
+import { findLesson, requireCourse, requireCourseOwner, requireEnrollment, type CourseRecord } from "./course-utils.js";
+
+export function calculateReviewStats(reviews: CourseReview[]) {
+  const totalReviews = reviews.length;
+  const distribution: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+  if (!totalReviews) {
+    return { averageRating: 0, totalReviews: 0, distribution };
+  }
+  let sum = 0;
+  for (const r of reviews) {
+    const val = Math.min(5, Math.max(1, Math.round(r.rating)));
+    distribution[val] = (distribution[val] || 0) + 1;
+    sum += r.rating;
+  }
+  const averageRating = Math.round((sum / totalReviews) * 10) / 10;
+  return { averageRating, totalReviews, distribution };
+}
 
 const courseInput = z.object({
   title: z.string().trim().min(4).max(100), subtitle: z.string().trim().min(8).max(180), description: z.string().trim().min(30).max(5000),
@@ -24,13 +40,28 @@ coursesRouter.get("/courses", asyncRoute(async (req, res) => {
   const page = Math.max(1, Number(req.query.page ?? 1) || 1);
   const limit = Math.min(24, Math.max(1, Number(req.query.limit ?? 9) || 9));
   const allCourses = await all<CourseRecord>("courses");
+  const allReviews = await all<CourseReview>("course_reviews");
   let rows = allCourses.filter((course) => course.status === "PUBLISHED");
   if (query) rows = rows.filter((course) => `${course.title} ${course.subtitle} ${course.description} ${course.category} ${course.instructorName}`.toLowerCase().includes(query));
   if (category && category !== "All topics") rows = rows.filter((course) => course.category === category);
   if (level) rows = rows.filter((course) => course.level === level);
   rows.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   const enrollments = await all<{ courseId: string; status: string }>("enrollments");
-  res.json({ courses: rows.slice((page - 1) * limit, page * limit).map((course) => ({ ...course, enrollmentCount: enrollments.filter((item) => item.courseId === course.id && item.status === "ACTIVE").length })), total: rows.length, page, pages: Math.ceil(rows.length / limit) });
+  res.json({
+    courses: rows.slice((page - 1) * limit, page * limit).map((course) => {
+      const courseReviews = allReviews.filter((r) => r.courseId === course.id);
+      const { averageRating, totalReviews } = calculateReviewStats(courseReviews);
+      return {
+        ...course,
+        enrollmentCount: enrollments.filter((item) => item.courseId === course.id && item.status === "ACTIVE").length,
+        averageRating,
+        reviewCount: totalReviews,
+      };
+    }),
+    total: rows.length,
+    page,
+    pages: Math.ceil(rows.length / limit),
+  });
 }));
 
 coursesRouter.get("/courses/:courseId", optionalAuthenticate, asyncRoute(async (req, res) => {
@@ -38,7 +69,13 @@ coursesRouter.get("/courses/:courseId", optionalAuthenticate, asyncRoute(async (
   if (course.status !== "PUBLISHED" && req.user?.id !== course.instructorId && req.user?.role !== "ADMIN") throw new HttpError(404, "COURSE_NOT_FOUND", "We couldn't find that course.");
   const quiz = (await all<{ id: string; courseId: string; title: string; passPercent: number; required: boolean }>("quizzes")).find((item) => item.courseId === course.id);
   const count = (await all<{ courseId: string; status: string }>("enrollments")).filter((item) => item.courseId === course.id && item.status === "ACTIVE").length;
-  res.json({ course, quiz: quiz ? { title: quiz.title, passPercent: quiz.passPercent, required: quiz.required } : undefined, enrollmentCount: count });
+  const reviews = (await all<CourseReview>("course_reviews")).filter((r) => r.courseId === course.id);
+  const { averageRating, totalReviews } = calculateReviewStats(reviews);
+  res.json({
+    course: { ...course, averageRating, reviewCount: totalReviews },
+    quiz: quiz ? { title: quiz.title, passPercent: quiz.passPercent, required: quiz.required } : undefined,
+    enrollmentCount: count,
+  });
 }));
 
 coursesRouter.get("/instructor/courses", authenticate, allowRoles("INSTRUCTOR", "ADMIN"), asyncRoute(async (req, res) => {
@@ -95,6 +132,112 @@ coursesRouter.post("/instructor/courses/:courseId/publish", authenticate, allowR
   const updated = await update<CourseRecord>("courses", course.id, { status, reviewNote: undefined, updatedAt: now() } as Partial<CourseRecord>);
   await insert("audit_logs", { id: id(), actorId: req.user!.id, action: "course.publish.request", targetType: "course", targetId: course.id, createdAt: now() });
   res.json({ course: updated, message: status === "PUBLISHED" ? "Your course is live." : "Your course is in the review queue." });
+}));
+
+coursesRouter.post("/instructor/courses/:courseId/lessons/:lessonId/resources", authenticate, allowRoles("INSTRUCTOR", "ADMIN"), asyncRoute(async (req, res) => {
+  const course = await requireCourseOwner(pathParam(req, "courseId"), req.user!);
+  const input = z.object({
+    title: z.string().trim().min(2).max(120),
+    url: z.string().url(),
+    type: z.enum(["pdf", "link", "code", "document", "archive"]),
+    sizeLabel: z.string().trim().max(30).optional(),
+  }).parse(req.body);
+  const { lesson } = findLesson(course, pathParam(req, "lessonId"));
+  lesson.resources = lesson.resources ?? [];
+  const resource: LessonResource = { id: id(), ...input };
+  lesson.resources.push(resource);
+  await update<CourseRecord>("courses", course.id, { sections: course.sections, updatedAt: now() } as Partial<CourseRecord>);
+  res.status(201).json({ resource, resources: lesson.resources });
+}));
+
+coursesRouter.delete("/instructor/courses/:courseId/lessons/:lessonId/resources/:resourceId", authenticate, allowRoles("INSTRUCTOR", "ADMIN"), asyncRoute(async (req, res) => {
+  const course = await requireCourseOwner(pathParam(req, "courseId"), req.user!);
+  const { lesson } = findLesson(course, pathParam(req, "lessonId"));
+  const resourceId = pathParam(req, "resourceId");
+  lesson.resources = (lesson.resources ?? []).filter((r) => r.id !== resourceId);
+  await update<CourseRecord>("courses", course.id, { sections: course.sections, updatedAt: now() } as Partial<CourseRecord>);
+  res.json({ success: true, resources: lesson.resources });
+}));
+
+coursesRouter.get("/courses/:courseId/reviews", asyncRoute(async (req, res) => {
+  const course = await requireCourse(pathParam(req, "courseId"));
+  const allReviews = await all<CourseReview>("course_reviews");
+  const reviews = allReviews.filter((r) => r.courseId === course.id).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  const stats = calculateReviewStats(reviews);
+  res.json({ reviews, stats });
+}));
+
+coursesRouter.post("/courses/:courseId/reviews", authenticate, allowRoles("STUDENT"), asyncRoute(async (req, res) => {
+  const course = await requireCourse(pathParam(req, "courseId"));
+  await requireEnrollment(course.id, req.user!.id);
+  const input = z.object({
+    rating: z.number().int().min(1).max(5),
+    comment: z.string().trim().min(5).max(1000),
+  }).parse(req.body);
+
+  const allReviews = await all<CourseReview>("course_reviews");
+  const existing = allReviews.find((r) => r.courseId === course.id && r.studentId === req.user!.id);
+  const timestamp = now();
+
+  if (existing) {
+    const updated = await update<CourseReview>("course_reviews", existing.id, {
+      rating: input.rating,
+      comment: input.comment,
+      updatedAt: timestamp,
+    });
+    res.json({ review: updated });
+    return;
+  }
+
+  const review: CourseReview = {
+    id: id(),
+    courseId: course.id,
+    studentId: req.user!.id,
+    studentName: req.user!.name,
+    rating: input.rating,
+    comment: input.comment,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+  await insert("course_reviews", review);
+  res.status(201).json({ review });
+}));
+
+coursesRouter.get("/courses/:courseId/announcements", asyncRoute(async (req, res) => {
+  const course = await requireCourse(pathParam(req, "courseId"));
+  const announcements = (await all<CourseAnnouncement>("course_announcements"))
+    .filter((a) => a.courseId === course.id)
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  res.json({ announcements });
+}));
+
+coursesRouter.post("/instructor/courses/:courseId/announcements", authenticate, allowRoles("INSTRUCTOR", "ADMIN"), asyncRoute(async (req, res) => {
+  const course = await requireCourseOwner(pathParam(req, "courseId"), req.user!);
+  const input = z.object({
+    title: z.string().trim().min(3).max(120),
+    content: z.string().trim().min(5).max(3000),
+  }).parse(req.body);
+
+  const announcement: CourseAnnouncement = {
+    id: id(),
+    courseId: course.id,
+    instructorId: req.user!.id,
+    instructorName: req.user!.name,
+    title: input.title,
+    content: input.content,
+    createdAt: now(),
+  };
+  await insert("course_announcements", announcement);
+  await insert("audit_logs", {
+    id: id(),
+    actorId: req.user!.id,
+    action: "course.announcement.create",
+    targetType: "course",
+    targetId: course.id,
+    metadata: { title: input.title },
+    createdAt: now(),
+  });
+  res.status(201).json({ announcement });
 }));
 
 coursesRouter.get("/admin/overview", authenticate, allowRoles("ADMIN"), asyncRoute(async (_req, res) => {

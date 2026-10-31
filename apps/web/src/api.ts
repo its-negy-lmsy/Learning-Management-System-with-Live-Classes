@@ -1,9 +1,9 @@
 import { createApi, fetchBaseQuery } from "@reduxjs/toolkit/query/react";
-import type { Course, Role } from "@fs03/shared";
+import type { Course, Role, CourseReview, CourseAnnouncement, LessonResource, InteractiveNote } from "@fs03/shared";
 
 export type User = { id: string; name: string; email: string; role: Role };
 export type Media = { id: string; status: string; progress: number; metadata?: { durationSeconds?: number }; failureReason?: string };
-export type LessonView = { id: string; title: string; summary?: string; durationSeconds: number; preview: boolean; mediaAssetId?: string; mediaStatus?: string; progress?: { positionSeconds: number; completedAt?: string } };
+export type LessonView = { id: string; title: string; summary?: string; durationSeconds: number; preview: boolean; mediaAssetId?: string; mediaStatus?: string; resources?: LessonResource[]; progress?: { positionSeconds: number; completedAt?: string } };
 export type LearningData = { course: Omit<Course, "sections"> & { sections: Array<{ id: string; title: string; lessons: LessonView[] }> }; completion: { completed: boolean; completedLessons: number; totalLessons: number; quizComplete: boolean } };
 
 const rawBaseQuery = fetchBaseQuery({ baseUrl: "/api/v1", credentials: "include" });
@@ -19,7 +19,7 @@ const baseQuery: typeof rawBaseQuery = async (args, api, extraOptions) => {
 export const lmsApi = createApi({
   reducerPath: "lmsApi",
   baseQuery,
-  tagTypes: ["User", "Courses", "Course", "Enrollments", "Learning", "Earnings", "Media", "Quiz", "LiveClasses", "Certificates"],
+  tagTypes: ["User", "Courses", "Course", "Enrollments", "Learning", "Earnings", "Media", "Quiz", "LiveClasses", "Certificates", "Reviews", "Announcements", "Notes", "Resources", "Learners"],
   endpoints: (builder) => ({
     me: builder.query<{ user: User }, void>({ query: () => "/auth/me", providesTags: ["User"] }),
     login: builder.mutation<{ user: User }, { email: string; password: string }>({ query: (body) => ({ url: "/auth/login", method: "POST", body }), invalidatesTags: ["User"] }),
@@ -38,6 +38,7 @@ export const lmsApi = createApi({
     enrollments: builder.query<{ enrollments: Array<{ course: Course; progress: { completed: number; total: number } }> }, void>({ query: () => "/me/enrollments", providesTags: ["Enrollments"] }),
     learning: builder.query<LearningData, string>({ query: (courseId) => `/courses/${courseId}/learning`, providesTags: (_result, _error, id) => [{ type: "Learning", id }] }),
     progress: builder.mutation<{ progress: { positionSeconds: number; completedAt?: string } }, { lessonId: string; courseId: string; positionSeconds: number; playing: boolean }>({ query: ({ lessonId, ...body }) => ({ url: `/lessons/${lessonId}/progress`, method: "POST", body }), invalidatesTags: (_result, _error, arg) => [{ type: "Learning", id: arg.courseId }, "Enrollments"] }),
+    completeLesson: builder.mutation<{ progress: unknown }, { courseId: string; lessonId: string }>({ query: ({ courseId, lessonId }) => ({ url: `/lessons/${lessonId}/complete`, method: "POST", body: { courseId } }), invalidatesTags: (_result, _error, arg) => [{ type: "Learning", id: arg.courseId }, "Enrollments"] }),
     quiz: builder.query<{ quiz: { id: string; title: string; passPercent: number; required: boolean; questions: Array<{ id: string; prompt: string; options: string[] }> }; attempts: Array<{ scorePercent: number; passed: boolean }> }, string>({ query: (courseId) => `/courses/${courseId}/quiz`, providesTags: ["Quiz"] }),
     submitQuiz: builder.mutation<{ attempt: { scorePercent: number; passed: boolean; correctCount: number; total: number; answerResults: Array<{ questionId: string; correct: boolean; correctOptionIndex: number }> } }, { courseId: string; answers: Record<string, number> }>({ query: ({ courseId, ...body }) => ({ url: `/courses/${courseId}/quiz/attempts`, method: "POST", body }), invalidatesTags: (_result, _error, arg) => [{ type: "Learning", id: arg.courseId }, "Quiz"] }),
     earnings: builder.query<{ grossMinor: number; platformFeeMinor: number; instructorNetMinor: number; pendingPayoutMinor: number; settledMinor: number; transactions: Array<{ paymentId: string; courseTitle?: string; amountMinor: number; currency: string; status: string; date: string; instructorNetMinor: number }> }, void>({ query: () => "/instructor/earnings", providesTags: ["Earnings"] }),
@@ -58,15 +59,33 @@ export const lmsApi = createApi({
     applyAsInstructor: builder.mutation<{ application: { id: string; status: string } }, { bio: string; specialties: string[] }>({ query: (body) => ({ url: "/instructor/applications", method: "POST", body }), invalidatesTags: ["User"] }),
     instructorApplications: builder.query<{ applications: Array<{ id: string; bio: string; specialties: string[]; applicant?: { name: string; email: string } }> }, void>({ query: () => "/admin/instructor-applications" }),
     reviewInstructorApplication: builder.mutation<{ userRole: string }, { applicationId: string; decision: "approve" | "reject"; note?: string }>({ query: ({ applicationId, ...body }) => ({ url: `/admin/instructor-applications/${applicationId}/review`, method: "POST", body }), invalidatesTags: ["User"] }),
+    // Enterprise Reviews & Ratings
+    reviews: builder.query<{ reviews: CourseReview[]; stats: { averageRating: number; totalReviews: number; distribution: Record<number, number> } }, string>({ query: (courseId) => `/courses/${courseId}/reviews`, providesTags: (_result, _error, id) => [{ type: "Reviews", id }] }),
+    addReview: builder.mutation<{ review: CourseReview }, { courseId: string; rating: number; comment: string }>({ query: ({ courseId, ...body }) => ({ url: `/courses/${courseId}/reviews`, method: "POST", body }), invalidatesTags: (_result, _error, arg) => [{ type: "Reviews", id: arg.courseId }, { type: "Course", id: arg.courseId }, "Courses"] }),
+    // Course Announcements
+    announcements: builder.query<{ announcements: CourseAnnouncement[] }, string>({ query: (courseId) => `/courses/${courseId}/announcements`, providesTags: (_result, _error, id) => [{ type: "Announcements", id }] }),
+    addAnnouncement: builder.mutation<{ announcement: CourseAnnouncement }, { courseId: string; title: string; content: string }>({ query: ({ courseId, ...body }) => ({ url: `/instructor/courses/${courseId}/announcements`, method: "POST", body }), invalidatesTags: (_result, _error, arg) => [{ type: "Announcements", id: arg.courseId }] }),
+    // Lesson Interactive Notes
+    lessonNotes: builder.query<{ notes: InteractiveNote[] }, { courseId: string; lessonId: string }>({ query: ({ courseId, lessonId }) => `/courses/${courseId}/lessons/${lessonId}/notes`, providesTags: ["Notes"] }),
+    addNote: builder.mutation<{ note: InteractiveNote }, { courseId: string; lessonId: string; timestampSeconds: number; text: string }>({ query: ({ courseId, lessonId, ...body }) => ({ url: `/courses/${courseId}/lessons/${lessonId}/notes`, method: "POST", body }), invalidatesTags: ["Notes"] }),
+    deleteNote: builder.mutation<{ success: boolean }, string>({ query: (noteId) => ({ url: `/notes/${noteId}`, method: "DELETE" }), invalidatesTags: ["Notes"] }),
+    // Downloadable Lesson Resources
+    addLessonResource: builder.mutation<{ resource: LessonResource; resources: LessonResource[] }, { courseId: string; lessonId: string; title: string; url: string; type: "pdf" | "link" | "code" | "document" | "archive"; sizeLabel?: string }>({ query: ({ courseId, lessonId, ...body }) => ({ url: `/instructor/courses/${courseId}/lessons/${lessonId}/resources`, method: "POST", body }), invalidatesTags: ["Courses", "Course", "Learning"] }),
+    deleteLessonResource: builder.mutation<{ success: boolean; resources: LessonResource[] }, { courseId: string; lessonId: string; resourceId: string }>({ query: ({ courseId, lessonId, resourceId }) => ({ url: `/instructor/courses/${courseId}/lessons/${lessonId}/resources/${resourceId}`, method: "DELETE" }), invalidatesTags: ["Courses", "Course", "Learning"] }),
+    // Instructor Learner Analytics
+    instructorLearners: builder.query<{ learners: Array<{ enrollment: unknown; student?: { name: string; email: string }; completedLessons: number; totalLessons: number; progressPercent: number; quizPassed: boolean; quizScore?: number; certificateNumber?: string }> }, string>({ query: (courseId) => `/instructor/courses/${courseId}/learners`, providesTags: ["Learners"] }),
   }),
 });
 
 export const {
   useMeQuery, useLoginMutation, useRegisterMutation, useLogoutMutation, useCoursesQuery, useCourseQuery, useInstructorCoursesQuery,
   useCreateCourseMutation, useUpdateCourseMutation, useAddLessonMutation, usePublishCourseMutation, useUploadVideoMutation,
-  useMediaQuery, useEnrollMutation, useEnrollmentsQuery, useLearningQuery, useProgressMutation, useQuizQuery, useSubmitQuizMutation,
+  useMediaQuery, useEnrollMutation, useEnrollmentsQuery, useLearningQuery, useProgressMutation, useCompleteLessonMutation, useQuizQuery, useSubmitQuizMutation,
   useEarningsQuery, useCheckoutMutation, useMockConfirmMutation, useLiveClassesQuery, useCreateLiveClassMutation, useJoinLiveClassMutation,
   useCertificatesQuery, useIssueCertificateMutation, useAdminOverviewQuery,
   useAdminReviewQueueQuery, useReviewCourseMutation, useInstructorAnalyticsQuery, useInstructorQuizQuery, useSaveInstructorQuizMutation,
   useInstructorApplicationQuery, useApplyAsInstructorMutation, useInstructorApplicationsQuery, useReviewInstructorApplicationMutation,
+  useReviewsQuery, useAddReviewMutation, useAnnouncementsQuery, useAddAnnouncementMutation,
+  useLessonNotesQuery, useAddNoteMutation, useDeleteNoteMutation,
+  useAddLessonResourceMutation, useDeleteLessonResourceMutation, useInstructorLearnersQuery,
 } = lmsApi;

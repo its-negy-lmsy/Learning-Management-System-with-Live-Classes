@@ -91,13 +91,81 @@ async function main() {
   assert(pdf.ok && pdf.headers.get("content-type")?.includes("application/pdf"), "Certificate PDF did not download.");
   const verified = await request(`/certificates/${certificate.data.certificate.certificateNumber}/verify`);
   assert(verified.response.ok && verified.data.valid, "Public certificate verification failed.");
-  const checkout = await request("/courses/" + catalog.data.courses.find((item) => item.priceMinor > 0).id + "/checkout", { method: "POST", cookies: learner });
+  
+  // Use a fresh buyer account for checkout verification to guarantee idempotency across repeated test runs
+  const buyerEmail = `buyer_${Date.now()}@fs03.demo`;
+  const buyerRegister = await request("/auth/register", { method: "POST", body: { name: "Test Buyer", email: buyerEmail, password: "LearnFS03!Local" } });
+  const buyerCookies = buyerRegister.response.headers.getSetCookie().map((c) => c.split(";")[0]).join("; ");
+  const paidCourse = catalog.data.courses.find((item) => item.priceMinor > 0);
+  const checkout = await request(`/courses/${paidCourse.id}/checkout`, { method: "POST", cookies: buyerCookies });
   assert(checkout.response.status === 201 && checkout.data.mock, `Demo test checkout was not created: ${JSON.stringify(checkout.data)}`);
-  const confirmation = await request(`/payments/${checkout.data.payment.id}/mock-confirm`, { method: "POST", cookies: learner });
+  const confirmation = await request(`/payments/${checkout.data.payment.id}/mock-confirm`, { method: "POST", cookies: buyerCookies });
   assert(confirmation.response.ok && confirmation.data.payment.status === "PAID", "Demo payment confirmation failed.");
 
+  // Test Downloadable Lesson Resources
+  const addResource = await request(`/instructor/courses/${course.id}/lessons/${lesson.id}/resources`, {
+    method: "POST",
+    cookies: instructor,
+    body: { title: "Course Cheatsheet", url: "https://example.com/cheatsheet.pdf", type: "pdf", sizeLabel: "1.2 MB" }
+  });
+  assert(addResource.response.status === 201 && addResource.data.resources?.length > 0, "Lesson resource addition failed.");
+
+  // Test Course Announcements
+  const postAnnouncement = await request(`/instructor/courses/${course.id}/announcements`, {
+    method: "POST",
+    cookies: instructor,
+    body: { title: "Welcome learners!", content: "Office hours and live practice sessions are now open." }
+  });
+  assert(postAnnouncement.response.status === 201, "Instructor announcement posting failed.");
+  const announcements = await request(`/courses/${course.id}/announcements`);
+  assert(announcements.response.ok && announcements.data.announcements?.length > 0, "Public announcements retrieval failed.");
+
+  // Test Interactive Video Notes
+  const createNote = await request(`/courses/${course.id}/lessons/${lesson.id}/notes`, {
+    method: "POST",
+    cookies: learner,
+    body: { timestampSeconds: 5, text: "Key note: Always validate inputs at the system edge." }
+  });
+  assert(createNote.response.status === 201 && createNote.data.note?.text.includes("validate"), "Interactive note creation failed.");
+  const notes = await request(`/courses/${course.id}/lessons/${lesson.id}/notes`, { cookies: learner });
+  assert(notes.response.ok && notes.data.notes?.length > 0, "Lesson notes retrieval failed.");
+
+  // Test Course Review & Rating Submission
+  const submitReview = await request(`/courses/${course.id}/reviews`, {
+    method: "POST",
+    cookies: learner,
+    body: { rating: 5, comment: "Outstanding structured curriculum and practical exercises!" }
+  });
+  assert(submitReview.response.status === 201 && submitReview.data.review.rating === 5, "Course review submission failed.");
+  const reviews = await request(`/courses/${course.id}/reviews`);
+  assert(reviews.response.ok && reviews.data.stats.totalReviews >= 1, "Course reviews retrieval and statistics calculation failed.");
+
+  // Test Instructor Learner Completion Analytics
+  const learnerAnalytics = await request(`/instructor/courses/${course.id}/learners`, { cookies: instructor });
+  assert(learnerAnalytics.response.ok && learnerAnalytics.data.learners?.length > 0, "Instructor learner analytics failed.");
+
   const pdfBytes = await pdf.arrayBuffer();
-  console.log(JSON.stringify({ status: "passed", api: origin, seededCatalogCourses: catalog.data.total, course: course.title, ffprobeDurationSeconds: media.metadata.durationSeconds, hlsSegmentBytes: Number(segment.headers.get("content-length")), privatePlaylistBeforeEnrollment: unauthenticated.response.status, learnerEnrollment: enrollment.response.status, wrongQuizAnswerPassed: wrongAttempt.data.attempt.passed, quizScorePercent: attempt.data.attempt.scorePercent, completion: learning.data.completion.completed, certificatePdfBytes: pdfBytes.byteLength, certificateVerification: verified.data.valid, mockPayment: confirmation.data.payment.status }, null, 2));
+  console.log(JSON.stringify({
+    status: "passed",
+    api: origin,
+    seededCatalogCourses: catalog.data.total,
+    course: course.title,
+    ffprobeDurationSeconds: media.metadata.durationSeconds,
+    hlsSegmentBytes: Number(segment.headers.get("content-length")),
+    privatePlaylistBeforeEnrollment: unauthenticated.response.status,
+    learnerEnrollment: enrollment.response.status,
+    wrongQuizAnswerPassed: wrongAttempt.data.attempt.passed,
+    quizScorePercent: attempt.data.attempt.scorePercent,
+    completion: learning.data.completion.completed,
+    certificatePdfBytes: pdfBytes.byteLength,
+    certificateVerification: verified.data.valid,
+    mockPayment: confirmation.data.payment.status,
+    lessonResourcesCount: addResource.data.resources.length,
+    announcementsCount: announcements.data.announcements.length,
+    interactiveNotesCount: notes.data.notes.length,
+    verifiedReviewAverage: reviews.data.stats.averageRating,
+    enrolledLearnerAnalytics: learnerAnalytics.data.learners.length,
+  }, null, 2));
 }
 
 main().catch((error) => { console.error(error); process.exitCode = 1; });

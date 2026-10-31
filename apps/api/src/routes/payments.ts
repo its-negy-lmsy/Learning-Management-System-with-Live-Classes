@@ -103,50 +103,6 @@ paymentsRouter.get("/instructor/analytics", authenticate, allowRoles("INSTRUCTOR
   res.json({ totalCourses: courses.length, publishedCourses: courses.filter((course) => course.status === "PUBLISHED").length, totalEnrollments: activeEnrollments.length, activeLearners: studentIds.size, completedLessons: progress.filter((item) => courseIds.has(item.courseId) && item.completedAt).length, liveClassParticipants: attendance.filter((item) => sessionIds.has(item.sessionId)).length, courses: courseAnalytics });
 }));
 
-paymentsRouter.post("/instructor/courses/:courseId/live-classes", authenticate, allowRoles("INSTRUCTOR"), asyncRoute(async (req, res) => {
-  const course = await requireCourse(pathParam(req, "courseId"));
-  if (course.instructorId !== req.user!.id) throw new HttpError(403, "FORBIDDEN", "You can only schedule a class for your own course.");
-  const input = z.object({ title: z.string().trim().min(4).max(120), startsAt: z.iso.datetime(), durationMinutes: z.number().int().min(15).max(240), description: z.string().trim().max(500).optional() }).parse(req.body);
-  if (new Date(input.startsAt).getTime() < Date.now() - 60_000) throw new HttpError(400, "INVALID_START", "Choose a start time in the future.");
-  const session = { id: id(), courseId: course.id, instructorId: req.user!.id, title: input.title, description: input.description, startsAt: input.startsAt, endsAt: new Date(new Date(input.startsAt).getTime() + input.durationMinutes * 60000).toISOString(), durationMinutes: input.durationMinutes, roomName: `fs03-${id().replaceAll("-", "")}`, status: "SCHEDULED", createdAt: now() };
-  await insert("live_classes", session);
-  res.status(201).json({ session, providerConfigured: Boolean(config.livekitUrl && config.livekitApiKey && config.livekitApiSecret) });
-}));
-
-paymentsRouter.get("/courses/:courseId/live-classes", authenticate, asyncRoute(async (req, res) => {
-  const course = await requireCourse(pathParam(req, "courseId"));
-  if (req.user!.role === "STUDENT") await requireEnrollment(course.id, req.user!.id);
-  else if (req.user!.role === "INSTRUCTOR" && req.user!.id !== course.instructorId) throw new HttpError(403, "FORBIDDEN", "You cannot view this class schedule.");
-  const sessions = (await all<{ courseId: string; startsAt: string } & Record<string, unknown>>("live_classes")).filter((session) => session.courseId === course.id).sort((a, b) => a.startsAt.localeCompare(b.startsAt));
-  res.json({ sessions, providerConfigured: Boolean(config.livekitUrl && config.livekitApiKey && config.livekitApiSecret) });
-}));
-
-paymentsRouter.post("/live-classes/:sessionId/join", authenticate, asyncRoute(async (req, res) => {
-  const session = await get<{ id: string; courseId: string; instructorId: string; roomName: string; title: string; startsAt: string; endsAt: string; status: string }>("live_classes", pathParam(req, "sessionId"));
-  if (!session) throw new HttpError(404, "SESSION_NOT_FOUND", "We couldn't find that class.");
-  const course = await requireCourse(session.courseId);
-  if (req.user!.id !== session.instructorId && req.user!.role !== "ADMIN") await requireEnrollment(course.id, req.user!.id);
-  const nowMs = Date.now();
-  if (nowMs < new Date(session.startsAt).getTime() - 15 * 60_000 || nowMs > new Date(session.endsAt).getTime() + 15 * 60_000 || session.status === "CANCELLED") throw new HttpError(409, "SESSION_UNAVAILABLE", "This class is not open for joining right now.");
-  if (!config.livekitUrl || !config.livekitApiKey || !config.livekitApiSecret) throw new HttpError(503, "LIVE_PROVIDER_UNAVAILABLE", "LiveKit is not configured yet. The session schedule is saved and ready for provider setup.");
-  const { AccessToken } = await import("livekit-server-sdk");
-  const token = new AccessToken(config.livekitApiKey, config.livekitApiSecret, { identity: req.user!.id, name: req.user!.name, ttl: "45m" });
-  token.addGrant({ roomJoin: true, room: session.roomName, canPublish: true, canSubscribe: true, canPublishData: true });
-  const jwt = await token.toJwt();
-  const attendance = (await all<{ id: string; sessionId: string; userId: string; joinedAt: string }>("live_attendance")).find((item) => item.sessionId === session.id && item.userId === req.user!.id);
-  if (attendance) await update<{ id: string; joinedAt: string }>("live_attendance", attendance.id, { joinedAt: now() });
-  else await insert("live_attendance", { id: id(), sessionId: session.id, userId: req.user!.id, joinedAt: now() });
-  res.json({ url: config.livekitUrl, token: jwt, session: { id: session.id, title: session.title } });
-}));
-
-paymentsRouter.post("/live-classes/:sessionId/end", authenticate, allowRoles("INSTRUCTOR", "ADMIN"), asyncRoute(async (req, res) => {
-  const session = await get<{ id: string; instructorId: string; status: string }>("live_classes", pathParam(req, "sessionId"));
-  if (!session) throw new HttpError(404, "SESSION_NOT_FOUND", "We couldn't find that class.");
-  if (session.instructorId !== req.user!.id && req.user!.role !== "ADMIN") throw new HttpError(403, "FORBIDDEN", "Only the class instructor can end it.");
-  const updated = await update<{ id: string; status: string; endedAt?: string }>("live_classes", session.id, { status: "ENDED", endedAt: now() });
-  res.json({ session: updated });
-}));
-
 export async function stripeWebhookHandler(req: Request, res: Response) {
   if (!stripe || !process.env.STRIPE_WEBHOOK_SECRET) { res.status(503).json({ error: "Stripe webhook is not configured." }); return; }
   let event: Stripe.Event;

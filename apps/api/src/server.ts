@@ -15,6 +15,7 @@ import { coursesRouter } from "./routes/courses.js";
 import { learningRouter } from "./routes/learning.js";
 import { mediaRouter } from "./routes/media.js";
 import { paymentsRouter, stripeWebhookHandler } from "./routes/payments.js";
+import { liveClassesRouter } from "./routes/live-classes.js";
 import { certificatesRouter } from "./routes/certificates.js";
 import { staffRouter } from "./routes/staff.js";
 import { errorHandler } from "./utils/http.js";
@@ -45,6 +46,7 @@ async function main() {
   app.use("/api/v1", coursesRouter);
   app.use("/api/v1", learningRouter);
   app.use("/api/v1", mediaRouter);
+  app.use("/api/v1", liveClassesRouter);
   app.use("/api/v1", paymentsRouter);
   app.use("/api/v1", certificatesRouter);
   app.use("/api/v1", staffRouter);

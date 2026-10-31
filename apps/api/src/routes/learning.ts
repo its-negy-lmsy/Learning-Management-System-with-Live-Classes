@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
-import { all, get, insert, update } from "../db/store.js";
+import type { InteractiveNote } from "@fs03/shared";
+import { all, get, insert, update, remove } from "../db/store.js";
 import { id, now } from "../utils/ids.js";
 import { allowRoles, authenticate } from "../utils/auth.js";
 import { asyncRoute, HttpError, pathParam } from "../utils/http.js";
@@ -108,10 +109,104 @@ learningRouter.get("/instructor/courses/:courseId/quiz", authenticate, allowRole
   res.json({ quiz });
 }));
 
+learningRouter.post("/lessons/:lessonId/complete", authenticate, allowRoles("STUDENT"), asyncRoute(async (req, res) => {
+  const input = z.object({ courseId: z.string().uuid() }).parse(req.body);
+  const course = await requireCourse(input.courseId);
+  await requireEnrollment(course.id, req.user!.id);
+  const { lesson } = findLesson(course, pathParam(req, "lessonId"));
+  const timestamp = now();
+  const existing = (await all<Progress>("lesson_progress")).find((item) => item.studentId === req.user!.id && item.lessonId === lesson.id);
+  const next: Progress = {
+    id: existing?.id ?? id(),
+    studentId: req.user!.id,
+    courseId: course.id,
+    lessonId: lesson.id,
+    positionSeconds: existing?.positionSeconds ?? lesson.durationSeconds,
+    watchedSeconds: existing?.watchedSeconds ?? lesson.durationSeconds,
+    completedAt: existing?.completedAt ?? timestamp,
+    lastHeartbeatAt: timestamp,
+    updatedAt: timestamp,
+  };
+  if (existing) await update<Progress>("lesson_progress", existing.id, next); else await insert("lesson_progress", next);
+  res.json({ progress: next });
+}));
+
+learningRouter.get("/courses/:courseId/lessons/:lessonId/notes", authenticate, allowRoles("STUDENT", "INSTRUCTOR"), asyncRoute(async (req, res) => {
+  const course = await requireCourse(pathParam(req, "courseId"));
+  if (req.user!.role === "STUDENT") await requireEnrollment(course.id, req.user!.id);
+  const lessonId = pathParam(req, "lessonId");
+  const allNotes = await all<InteractiveNote>("interactive_notes");
+  const notes = allNotes
+    .filter((note) => note.courseId === course.id && note.lessonId === lessonId && note.studentId === req.user!.id)
+    .sort((a, b) => a.timestampSeconds - b.timestampSeconds);
+  res.json({ notes });
+}));
+
+learningRouter.post("/courses/:courseId/lessons/:lessonId/notes", authenticate, allowRoles("STUDENT"), asyncRoute(async (req, res) => {
+  const course = await requireCourse(pathParam(req, "courseId"));
+  await requireEnrollment(course.id, req.user!.id);
+  const lessonId = pathParam(req, "lessonId");
+  findLesson(course, lessonId);
+  const input = z.object({
+    timestampSeconds: z.number().min(0).max(21600),
+    text: z.string().trim().min(1).max(2000),
+  }).parse(req.body);
+
+  const timestamp = now();
+  const note: InteractiveNote = {
+    id: id(),
+    studentId: req.user!.id,
+    courseId: course.id,
+    lessonId,
+    timestampSeconds: Math.round(input.timestampSeconds),
+    text: input.text,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+  await insert("interactive_notes", note);
+  res.status(201).json({ note });
+}));
+
+learningRouter.delete("/notes/:noteId", authenticate, allowRoles("STUDENT"), asyncRoute(async (req, res) => {
+  const noteId = pathParam(req, "noteId");
+  const note = await get<InteractiveNote>("interactive_notes", noteId);
+  if (!note || note.studentId !== req.user!.id) {
+    throw new HttpError(404, "NOTE_NOT_FOUND", "Note not found or cannot be deleted.");
+  }
+  await remove("interactive_notes", noteId);
+  res.json({ success: true });
+}));
+
 learningRouter.get("/instructor/courses/:courseId/learners", authenticate, allowRoles("INSTRUCTOR", "ADMIN"), asyncRoute(async (req, res) => {
   const course = await requireCourseOwner(pathParam(req, "courseId"), req.user!);
   const enrollments = (await all<Enrollment>("enrollments")).filter((item) => item.courseId === course.id && item.status === "ACTIVE");
   const users = await all<{ id: string; name: string; email: string }>("users");
   const progress = await all<Progress>("lesson_progress");
-  res.json({ learners: enrollments.map((enrollment) => ({ enrollment, student: users.find((user) => user.id === enrollment.studentId), completedLessons: progress.filter((item) => item.studentId === enrollment.studentId && item.courseId === course.id && item.completedAt).length })) });
+  const totalLessons = course.sections.reduce((count, section) => count + section.lessons.length, 0);
+  const attempts = await all<Attempt>("quiz_attempts");
+  const certificates = await all<{ id: string; courseId: string; studentId: string; certificateNumber: string }>("certificates");
+
+  res.json({
+    learners: enrollments.map((enrollment) => {
+      const student = users.find((user) => user.id === enrollment.studentId);
+      const studentProgress = progress.filter((item) => item.studentId === enrollment.studentId && item.courseId === course.id);
+      const completedCount = studentProgress.filter((item) => item.completedAt).length;
+      const progressPercent = totalLessons > 0 ? Math.round((completedCount / totalLessons) * 100) : 0;
+      const latestAttempt = attempts
+        .filter((item) => item.studentId === enrollment.studentId && item.courseId === course.id)
+        .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+      const cert = certificates.find((item) => item.studentId === enrollment.studentId && item.courseId === course.id);
+
+      return {
+        enrollment,
+        student,
+        completedLessons: completedCount,
+        totalLessons,
+        progressPercent,
+        quizPassed: latestAttempt?.passed ?? false,
+        quizScore: latestAttempt?.scorePercent,
+        certificateNumber: cert?.certificateNumber,
+      };
+    }),
+  });
 }));

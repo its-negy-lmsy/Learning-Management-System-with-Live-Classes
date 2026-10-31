@@ -35,9 +35,25 @@ async function withLocalLock<T>(operation: () => Promise<T> | T): Promise<T> {
   try {
     localState = await readLocalFile();
     const result = await operation();
-    const temp = `${statePath}.${process.pid}.tmp`;
+    const temp = `${statePath}.${process.pid}.${Date.now()}.tmp`;
     await fs.writeFile(temp, JSON.stringify(localState, null, 2), "utf8");
-    await fs.rename(temp, statePath);
+    for (let attempt = 0; attempt < 10; attempt++) {
+      try {
+        await fs.rename(temp, statePath);
+        break;
+      } catch (err) {
+        if (attempt === 9) {
+          try {
+            await fs.copyFile(temp, statePath);
+            await fs.rm(temp, { force: true });
+            break;
+          } catch {
+            throw err;
+          }
+        }
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+    }
     return result;
   } finally {
     await handle.close().catch(() => undefined);

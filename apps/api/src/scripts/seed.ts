@@ -36,7 +36,36 @@ export async function seedDemoData() {
     await insert("courses", course);
     await insert("quizzes", { id: id(), courseId, title: "Quick knowledge check", passPercent: 70, required: true, questions: seed.quiz.map((question) => ({ id: id(), ...question })) });
   }
-  console.info(`Seeded ${courseSeed.length} published courses and demo learner/instructor accounts.`);
+  const existingReviews = await all("course_reviews");
+  if (!existingReviews.length) {
+    const courses = await all<{ id: string; instructorId: string; instructorName: string; sections: any[] }>("courses");
+    const users = await all<{ id: string; name: string }>("users");
+    const student = users.find((u) => u.name === "Jordan Lee") ?? users[0];
+    if (courses.length && student) {
+      for (const c of courses) {
+        await insert("course_reviews", {
+          id: id(),
+          courseId: c.id,
+          studentId: student.id,
+          studentName: student.name,
+          rating: 5,
+          comment: "Clear, grounded, and immediately applicable in real team projects. Loved the structured lessons!",
+          createdAt: now(),
+          updatedAt: now(),
+        });
+        await insert("course_announcements", {
+          id: id(),
+          courseId: c.id,
+          instructorId: c.instructorId,
+          instructorName: c.instructorName,
+          title: "Welcome to the studio!",
+          content: "Welcome everyone! Feel free to ask questions, check the interactive notes, and download the lesson resources.",
+          createdAt: now(),
+        });
+      }
+    }
+  }
+  console.info(`Seeded published courses, reviews, announcements, and demo learner/instructor accounts.`);
   if (process.env.SEED_DEMO !== "false") {
     console.info(`Local instructor login: ${users[0]!.email} / ${instructorPassword}`);
     console.info(`Local learner login: ${users[1]!.email} / ${studentPassword}`);
