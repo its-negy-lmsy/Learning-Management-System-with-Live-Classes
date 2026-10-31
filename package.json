@@ -13,6 +13,7 @@
     "test": "npm run test --workspace @fs03/api && npm run test --workspace @fs03/web",
     "seed": "npm --workspace @fs03/api run seed",
     "create-admin": "npm --workspace @fs03/api run create-admin",
+    "clean:ports": "powershell -Command \"Get-NetTCPConnection -LocalPort 5174, 4100 -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force }\"",
     "demo:smoke": "node scripts/smoke-demo.mjs",
     "media:sample": "node scripts/generate-sample.mjs"
   },
