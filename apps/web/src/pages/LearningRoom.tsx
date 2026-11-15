@@ -158,7 +158,7 @@ export function LearningRoom() {
   };
 
   return (
-    <section className="learning-page">
+    <section className="learning-page loom-learning-room">
       <div className="learning-topbar">
         <Link to="/dashboard" className="back-link">
           <ChevronLeft size={16} /> My learning

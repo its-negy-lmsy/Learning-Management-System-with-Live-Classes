@@ -347,23 +347,24 @@ export function InstructorDashboard() {
   };
 
   return (
-    <section className="dashboard instructor-dash wrap">
-      <div className="dash-greeting">
-        <div>
-          <div className="eyebrow">
-            <span className="eyebrow-line" /> TEACHING STUDIO
+    <div className="linear-dashboard instructor-dash">
+      <section className="wrap">
+        <div className="dash-greeting">
+          <div>
+            <div className="eyebrow">
+              <span className="eyebrow-line" /> TEACHING STUDIO
+            </div>
+            <h1>
+              Good ideas need
+              <br />
+              <em>good teachers.</em>
+            </h1>
+            <p>Make something useful. Share what you know. See where it goes.</p>
           </div>
-          <h1>
-            Good ideas need
-            <br />
-            <em>good teachers.</em>
-          </h1>
-          <p>Make something useful. Share what you know. See where it goes.</p>
+          <button className="button button-linear" onClick={() => setShowCreate(!showCreate)}>
+            <Plus size={16} /> Create a course
+          </button>
         </div>
-        <button className="button button-dark" onClick={() => setShowCreate(!showCreate)}>
-          <Plus size={16} /> Create a course
-        </button>
-      </div>
 
       {notice && (
         <div className="notice-bar">
@@ -947,5 +948,6 @@ export function InstructorDashboard() {
         </aside>
       </div>
     </section>
+  </div>
   );
 }

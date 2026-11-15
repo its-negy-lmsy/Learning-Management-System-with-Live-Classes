@@ -42,8 +42,9 @@ export function AdminDashboard() {
   ];
 
   return (
-    <section className="dashboard wrap">
-      <div className="dash-greeting">
+    <div className="linear-dashboard">
+      <section className="wrap">
+        <div className="dash-greeting">
         <div>
           <div className="eyebrow">
             <span className="eyebrow-line" /> PLATFORM OPERATIONS
@@ -229,5 +230,6 @@ export function AdminDashboard() {
         </div>
       </div>
     </section>
+  </div>
   );
 }

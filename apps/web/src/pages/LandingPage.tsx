@@ -1,9 +1,7 @@
 import { Link } from "react-router-dom";
-import { ArrowRight, ArrowUpRight, Award, BookOpen, Play, Sparkles, Star, Video } from "lucide-react";
+import { ArrowRight, Award, BookOpen, Sparkles, Star, Video } from "lucide-react";
 import { useCoursesQuery } from "../api";
 import { CourseGrid } from "../components/courses/CourseCard";
-
-const heroTags = ["Full-Stack Development", "AI & Data Science", "UI/UX Design Systems", "Cloud & DevOps"];
 
 const learningPaths = [
   {
@@ -13,6 +11,7 @@ const learningPaths = [
     coursesCount: "3 masterclasses",
     icon: "💻",
     category: "Development",
+    tintClass: "card-tint-peach",
   },
   {
     title: "Cloud & DevOps Engineering",
@@ -21,6 +20,7 @@ const learningPaths = [
     coursesCount: "2 masterclasses",
     icon: "☁️",
     category: "Cloud",
+    tintClass: "card-tint-mint",
   },
   {
     title: "UI/UX & Design Systems",
@@ -29,6 +29,7 @@ const learningPaths = [
     coursesCount: "2 masterclasses",
     icon: "🎨",
     category: "Design",
+    tintClass: "card-tint-lavender",
   },
   {
     title: "AI & Modern Data Analytics",
@@ -37,6 +38,7 @@ const learningPaths = [
     coursesCount: "2 masterclasses",
     icon: "📊",
     category: "Data",
+    tintClass: "card-tint-sky",
   },
 ];
 
@@ -72,64 +74,74 @@ export function LandingPage() {
 
   return (
     <>
-      <section className="hero wrap">
-        <div className="hero-copy">
-          <div className="eyebrow">
-            <span className="eyebrow-line" /> THE MODERN LEARNING MANAGEMENT SYSTEM
+      {/* Notion Signature Hero Band */}
+      <section className="notion-hero-band">
+        <div className="wrap">
+          {/* Notion Colorful Sticky-Note Dots */}
+          <div className="notion-sticky-dots">
+            <span className="notion-dot notion-dot-pink" />
+            <span className="notion-dot notion-dot-mint" />
+            <span className="notion-dot notion-dot-yellow" />
+            <span className="notion-dot notion-dot-peach" />
+            <span className="notion-dot notion-dot-lavender" />
           </div>
-          <h1>
-            Master modern skills
-            <br />
-            <em>with live classes.</em>
-          </h1>
-          <p>
-            Engaging video lessons, live WebRTC interactive classrooms, auto-graded quizzes, and verified certificates designed to launch your tech career.
-          </p>
-          <div className="hero-actions">
-            <Link className="button button-dark" to="/explore">
-              Explore 6 Masterclasses <ArrowRight size={16} />
-            </Link>
-            <div className="avatar-stack">
-              <span>E</span>
-              <span>M</span>
-              <span>P</span>
-              <small>14,200+ curious learners</small>
-            </div>
-          </div>
-          <div className="hero-tags">
-            {heroTags.map((tag) => (
-              <span key={tag}>{tag}</span>
-            ))}
-          </div>
-        </div>
-        <div className="hero-visual">
-          <div className="hero-photo">
-            <img
-              src="https://images.unsplash.com/photo-1522202176988-66273c2fd55f?auto=format&fit=crop&w=1100&q=88"
-              alt="Students collaborating and coding together"
-            />
-            <div className="photo-grain" />
-            <div className="photo-note">
-              <span className="note-spark">✳</span>
-              <span>
-                Learn by doing.
+
+          <div className="notion-hero-layout">
+            <div className="notion-hero-copy">
+              <div className="notion-hero-eyebrow">
+                <span className="eyebrow-line" /> THE MODERN LEARNING MANAGEMENT SYSTEM
+              </div>
+              <h1 className="notion-hero-title">
+                Master modern skills
                 <br />
-                Build real software.
-              </span>
+                <em>with live classes.</em>
+              </h1>
+              <p className="notion-hero-subtitle">
+                Engaging video lectures, real-time WebRTC interactive studios, auto-graded quizzes, and tamper-proof QR certificates built for your career.
+              </p>
+              <div className="notion-hero-actions">
+                <Link className="button notion-hero-cta" to="/explore">
+                  Explore 6 Masterclasses <ArrowRight size={16} />
+                </Link>
+                <Link className="button notion-hero-cta-secondary" to="/teach">
+                  Teach on Fieldnotes
+                </Link>
+              </div>
+            </div>
+
+            {/* Notion Live Workspace Mockup Frame */}
+            <div className="notion-hero-mockup">
+              <div className="mockup-window-header">
+                <span className="mockup-dot red" />
+                <span className="mockup-dot yellow" />
+                <span className="mockup-dot green" />
+                <span className="mockup-title">fieldnotes.studio / classroom / live</span>
+              </div>
+              <div className="mockup-screen">
+                <div className="mockup-preview-card">
+                  <div className="mockup-preview-img-wrap">
+                    <img
+                      src="https://images.unsplash.com/photo-1522202176988-66273c2fd55f?auto=format&fit=crop&w=800&q=80"
+                      alt="Full-Stack Studio Live Classroom"
+                    />
+                    <div className="mockup-live-indicator">
+                      <span className="mockup-live-dot" />
+                      LIVE STUDIO ACTIVE
+                    </div>
+                  </div>
+                  <div className="mockup-preview-footer">
+                    <div className="mockup-preview-copy">
+                      <strong>Full-Stack TypeScript & React 19</strong>
+                      <small>Next Session: Production Docker & HLS Streaming</small>
+                    </div>
+                    <Link to="/explore" className="mockup-badge">
+                      Join Classroom →
+                    </Link>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
-          <div className="floating-card">
-            <span className="float-icon">
-              <Play size={14} fill="currentColor" />
-            </span>
-            <div>
-              <strong>Self-paced + Live Studios</strong>
-              <small>Interactive WebRTC & HLS video</small>
-            </div>
-            <ArrowUpRight size={15} />
-          </div>
-          <span className="hero-orbit orbit-one" />
-          <span className="hero-orbit orbit-two" />
         </div>
       </section>
 
@@ -156,7 +168,7 @@ export function LandingPage() {
         </div>
       </section>
 
-      {/* Beginner Friendly Learning Tracks */}
+      {/* Notion Pastel Learning Tracks */}
       <section className="section wrap paths-overview-section">
         <div className="section-heading">
           <div>
@@ -178,7 +190,7 @@ export function LandingPage() {
             <Link
               key={track.title}
               to={`/explore?category=${encodeURIComponent(track.category)}`}
-              className="track-card"
+              className={`track-card ${track.tintClass}`}
             >
               <div className="track-icon-row">
                 <span className="track-emoji">{track.icon}</span>
@@ -215,6 +227,7 @@ export function LandingPage() {
         <CourseGrid courses={data?.courses ?? []} loading={isLoading} />
       </section>
 
+      {/* Notion Spotlight / Manifesto Section */}
       <section className="manifesto">
         <div className="wrap manifesto-inner">
           <div className="manifesto-stamp">
@@ -306,4 +319,3 @@ export function LandingPage() {
     </>
   );
 }
-

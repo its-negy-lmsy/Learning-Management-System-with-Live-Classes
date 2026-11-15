@@ -19,23 +19,24 @@ export function StudentDashboard() {
   const totalCompletedLessons = enrollments.reduce((sum, item) => sum + item.progress.completed, 0);
 
   return (
-    <section className="dashboard wrap">
-      <div className="dash-greeting">
-        <div>
-          <div className="eyebrow">
-            <span className="eyebrow-line" /> STUDENT PORTAL & LEARNING DESK
+    <div className="linear-dashboard">
+      <section className="wrap">
+        <div className="dash-greeting">
+          <div>
+            <div className="eyebrow">
+              <span className="eyebrow-line" /> STUDENT PORTAL & LEARNING DESK
+            </div>
+            <h1>
+              Welcome back,
+              <br />
+              <em>{user.name.split(" ")[0]}.</em>
+            </h1>
+            <p>You’re building real skills. Keep your momentum going today.</p>
           </div>
-          <h1>
-            Welcome back,
-            <br />
-            <em>{user.name.split(" ")[0]}.</em>
-          </h1>
-          <p>You’re building real skills. Keep your momentum going today.</p>
+          <Link to="/explore" className="button button-linear">
+            Explore Course Library <ArrowRight size={15} />
+          </Link>
         </div>
-        <Link to="/explore" className="button button-dark">
-          Explore Course Library <ArrowRight size={15} />
-        </Link>
-      </div>
 
       {/* Streak and Stats Row */}
       <div className="stat-row">
@@ -86,7 +87,7 @@ export function StudentDashboard() {
               %)
             </small>
           </div>
-          <Link to={`/learn/${mostRecentCourse.course.id}`} className="button button-dark resume-btn">
+          <Link to={`/learn/${mostRecentCourse.course.id}`} className="button button-linear resume-btn">
             Resume Course <Play size={14} fill="currentColor" />
           </Link>
         </div>
@@ -237,6 +238,7 @@ export function StudentDashboard() {
         </aside>
       </div>
     </section>
+  </div>
   );
 }
 
