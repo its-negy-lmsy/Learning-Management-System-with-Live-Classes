@@ -1,8 +1,49 @@
-# FS-03 · Fieldnotes Learning Studio
+# Fieldnotes Learning Studio — Learning Management System with Live Classes (FS-03)
 
-A full-stack LMS capstone: course discovery, instructor course authoring, video upload and FFmpeg HLS processing, enrollment, progress, quizzes, live-class scheduling, certificates, payment test mode, and instructor earnings.
+> **Zitus Internship Capstone Project FS-03**  
+> **Lead Software Engineer:** Yuvraj Negy (Full-Stack Engineering Intern)  
+> **Submission Date:** November 20, 2026  
+> **Tech Stack:** React 19, TypeScript, Vite, Redux Toolkit, Node.js, Express 5, BullMQ, Redis, FFmpeg HLS VOD, WebRTC (LiveKit), PDFKit, Stripe Connect
 
-## What runs in the local demo
+[![Tests](https://img.shields.io/badge/tests-30%20passed-brightgreen.svg)](docs/acceptance.md)
+[![TypeScript](https://img.shields.io/badge/typescript-strict-blue.svg)](tsconfig.json)
+[![Media Engine](https://img.shields.io/badge/FFmpeg-HLS%20Transcoding-orange.svg)](apps/worker)
+
+---
+
+## 1. Executive Summary & Vision
+
+**Fieldnotes Learning Studio** is a full-stack learning platform designed for craftspeople, technical builders, and mindful students. The platform combines on-demand video learning with asynchronous FFmpeg HLS transcoding, interactive WebRTC live classrooms, tamper-proof auto-graded quizzes, scannable cryptographic PDF certificates, and split financial ledgers for instructors.
+
+The platform embraces modern SaaS design languages:
+- **Notion Aesthetic**: Course discovery, curriculum outline, and learning tracks.
+- **Loom Aesthetic**: Distraction-free 16:9 video player stage with timestamped notes.
+- **Linear Aesthetic**: High-density operational dashboards for students, instructors, and admins.
+
+---
+
+## 2. Deliverables Checklist & Directory Structure
+
+All capstone deliverables required for evaluation are located in the `deliverables/` folder:
+
+- **10-Minute Presentation Slide Deck**: [`deliverables/FS-03-LMS-10-Minute-Presentation-v3.pptx`](deliverables/FS-03-LMS-10-Minute-Presentation-v3.pptx)  
+  *(Professional 10-slide PowerPoint covering LMS Problem, Architecture, Video Transcoding Pipeline, WebRTC Mesh, Quizzes, Certificates, and Next Steps)*
+- **Presentation Companion Deck**: [`deliverables/PRESENTATION_DECK.md`](deliverables/PRESENTATION_DECK.md)
+- **Individual Reflection Report**: [`deliverables/INDIVIDUAL_REFLECTION.md`](deliverables/INDIVIDUAL_REFLECTION.md)  
+  *(Personal engineering reflection by Yuvraj Negy on background queues, media pipelines, WebRTC, and architectural tradeoffs)*
+- **Architecture & API Specification**: [`deliverables/ARCHITECTURE_AND_API_SPEC.md`](deliverables/ARCHITECTURE_AND_API_SPEC.md)
+- **High-Resolution Screenshots**: [`deliverables/screenshots/`](deliverables/screenshots/)
+  - `01_notion_landing_page.png`: Notion-style course discovery and landing page
+  - `02_course_catalog_explore.png`: Filterable course catalog with category pills
+  - `03_course_details_syllabus.png`: Comprehensive course syllabus and enrollment CTA
+  - `04_linear_student_dashboard.png`: Dark command-center student learning dashboard
+  - `05_loom_learning_room_player.png`: Loom-style 16:9 video player with timestamped notes
+  - `06_instructor_teaching_studio.png`: Instructor course management and video uploader
+  - `07_admin_operations_center.png`: Admin platform operations, revenue, and metrics
+
+---
+
+## 3. What runs in the local demo
 
 - React 19 + TypeScript + Vite, React Router, Redux Toolkit, and RTK Query.
 - Express 5 + TypeScript REST API with MongoDB/Mongoose production persistence, session-cookie JWT auth, role checks, Zod validation, and OpenAPI/Swagger UI.
